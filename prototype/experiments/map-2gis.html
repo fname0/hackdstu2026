@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Эксперимент: карта 2ГИС</title>
+  <link rel="stylesheet" href="../../assets/brand/tokens.css">
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #map { position: absolute; inset: 0; }
+    .panel { position: absolute; top: 16px; left: 16px; z-index: 10; width: 280px; max-width: calc(100% - 32px); box-sizing: border-box;
+      background: var(--rt-bg); border-radius: var(--rt-radius-md); box-shadow: var(--rt-shadow-md); padding: 16px; }
+    .panel h1 { font-size: 18px; line-height: 22px; margin-bottom: 4px; }
+    .meta { margin: 0 0 12px; font-size: var(--rt-fs-caption); line-height: var(--rt-lh-caption); color: var(--rt-text-secondary); }
+    .row { display: flex; gap: 8px; align-items: center; font-size: var(--rt-fs-small); margin-top: 8px; }
+    .row input { accent-color: var(--rt-purple); }
+    .legend { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: var(--rt-fs-caption); color: var(--rt-text-secondary); }
+    .legend i { flex: 1; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #E8D2ED, #9466FF, #7700FF, #FF4F12); }
+    .status { margin-top: 12px; font-size: var(--rt-fs-caption); color: var(--rt-text-muted); }
+    .status.err { color: var(--rt-error); }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="panel">
+    <h1>Подложка 2ГИС + deck.gl</h1>
+    <p class="meta">Эксперимент. Точки — демо (клиенты из xlsx, координаты условные внутри города).</p>
+    <label class="row"><input type="checkbox" id="l-hex" checked> Тепловые соты (плотность)</label>
+    <label class="row"><input type="checkbox" id="l-pts"> Точки компаний</label>
+    <div class="legend"><span>Меньше</span><i></i><span>Больше</span></div>
+    <div class="status" id="status">Загрузка карты…</div>
+  </div>
+
+  <script src="key.local.js"></script>
+  <script src="../data.js"></script>
+  <script src="https://mapgl.2gis.com/api/js/v1"></script>
+  <script src="https://unpkg.com/deck.gl@9.2.11/dist.min.js"></script>
+  <script src="https://unpkg.com/@2gis/deck2gis-layer@3.0.18/dist/deck2gislayer.js"></script>
+  <script>
+    const status = document.getElementById('status');
+    const setStatus = (t, err) => { status.textContent = t; status.classList.toggle('err', !!err); };
+    window.addEventListener('error', e => setStatus('Ошибка: ' + e.message, true));
+
+    const pts = window.RT_DATA.companies.filter(c => c.our && c.lat).map(c => ({ lon: c.lon, lat: c.lat, name: c.name }));
+
+    const map = new mapgl.Map('map', {
+      center: [39.72, 47.24],
+      zoom: 9,
+      key: window.DGIS_KEY,
+    });
+
+    const { initDeck, Deck2gisLayer } = window.deck2gisLayer;
+    const dk = initDeck(map, deck.Deck, { antialiasing: 'msaa' });
+
+    const RANGE = [[232, 210, 237], [196, 170, 255], [148, 102, 255], [119, 0, 255], [119, 0, 255], [255, 79, 18]];
+
+    const hex = new Deck2gisLayer({
+      id: 'rt-hex', deck: dk, type: deck.HexagonLayer, data: pts,
+      radius: 1500, coverage: 0.9, opacity: 0.75, colorRange: RANGE,
+      getPosition: d => [d.lon, d.lat],
+    });
+    const dots = new Deck2gisLayer({
+      id: 'rt-dots', deck: dk, type: deck.ScatterplotLayer, data: pts,
+      getPosition: d => [d.lon, d.lat], getRadius: 120, radiusMinPixels: 3,
+      getFillColor: [119, 0, 255, 230], getLineColor: [255, 255, 255], lineWidthMinPixels: 1, stroked: true,
+    });
+
+    const sync = () => {
+      for (const [id, layer, on] of [['rt-hex', hex, document.getElementById('l-hex').checked], ['rt-dots', dots, document.getElementById('l-pts').checked]]) {
+        try { map.removeLayer(id); } catch (_) {}
+        if (on) map.addLayer(layer);
+      }
+    };
+    map.on('styleload', () => { sync(); setStatus(`Карта загружена · ${pts.length} демо-точек`); });
+    document.getElementById('l-hex').addEventListener('change', sync);
+    document.getElementById('l-pts').addEventListener('change', sync);
+</script>
+</body>
+</html>

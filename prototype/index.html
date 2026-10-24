@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Экосистема коммерческого блока — Ростелеком</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="../assets/brand/tokens.css">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="header">
+    <div class="header__top container">
+      <a class="header__logo" href="#radar"><img src="../assets/brand/rt-logo.svg" alt="Ростелеком" width="140" height="36"></a>
+      <span class="header__product">Коммерческий блок</span>
+      <div class="header__right">
+        <span class="region-chip">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
+          Ростовская область
+        </span>
+        <span class="avatar" title="Менеджер B2B">МП</span>
+      </div>
+    </div>
+    <nav class="tabs container" aria-label="Модули">
+      <a class="rt-tab" href="#radar" data-view="radar">Радар присутствия</a>
+      <a class="rt-tab" href="#invest" data-view="invest">Инвестиционный навигатор</a>
+      <a class="rt-tab" href="#calc" data-view="calc">Калькулятор сделок</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    
+    <section class="view" id="view-radar">
+      <div class="page-head">
+        <div>
+          <h1>Радар присутствия</h1>
+          <p class="meta" id="radar-meta"></p>
+        </div>
+        <button class="rt-btn rt-btn--primary" data-export="radar">Выгрузить CSV</button>
+      </div>
+
+      <div class="stats" id="radar-stats"></div>
+
+      <div class="radar">
+        <aside class="filters" aria-label="Фильтры">
+          <div class="filters__group">
+            <div class="filters__title">Клиенты (база РТК / рынок ФНС)</div>
+            <div class="segmented" id="f-client">
+              <button data-v="all" class="is-active">Все</button>
+              <button data-v="our">Только наши</button>
+              <button data-v="their">Не наши</button>
+            </div>
+            <div class="client-legend">
+              <span><i class="dot dot--our"></i>Наши (РТК)</span>
+              <span><i class="dot dot--their"></i>Потенциал (ФНС)</span>
+            </div>
+          </div>
+
+          <div class="filters__group">
+            <div class="filters__title">Выручка за год, млн ₽</div>
+            <div class="range-inputs">
+              <input type="number" class="rt-input rt-input--sm" id="f-rev-min" min="0" step="5" placeholder="от 0" aria-label="Выручка от, млн ₽">
+              <span class="range-sep">—</span>
+              <input type="number" class="rt-input rt-input--sm" id="f-rev-max" min="0" step="10" placeholder="до 2000" aria-label="Выручка до, млн ₽">
+            </div>
+            <div class="chips chips--compact" id="f-rev-presets">
+              <button class="chip chip--sm" data-min="" data-max="">Любая</button>
+              <button class="chip chip--sm" data-min="20" data-max="">от 20 млн</button>
+              <button class="chip chip--sm" data-min="100" data-max="">от 100 млн</button>
+              <button class="chip chip--sm" data-min="300" data-max="">от 300 млн</button>
+            </div>
+          </div>
+
+          <div class="filters__group">
+            <div class="filters__title">Локация и область карты</div>
+            <select class="rt-input rt-input--sm" id="f-place" aria-label="Город или район">
+              <option value="">Вся Ростовская область</option>
+            </select>
+            <label class="check check--mt">
+              <input type="checkbox" id="f-bbox" checked> Искать в видимой области карты (как ПВЗ при приближении)
+            </label>
+          </div>
+
+          <div class="filters__group">
+            <div class="filters__title">Отрасль (ОКВЭД)</div>
+            <div class="chips" id="f-industry"></div>
+          </div>
+
+          <div class="filters__group">
+            <div class="filters__title">Тип субъекта</div>
+            <div class="segmented" id="f-type">
+              <button data-v="all" class="is-active">Все</button>
+              <button data-v="ЮЛ">Юрлица</button>
+              <button data-v="ИП">ИП</button>
+            </div>
+          </div>
+
+          <div class="filters__group filters__checks">
+            <label class="check">
+              <input type="checkbox" id="f-reloc">
+              <span><strong>Бизнес не по месту регистрации (*)</strong><small class="check__hint">ИНН другого города/региона, а точка или контракт здесь</small></span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="f-closed">
+              <span>Только закрытые / исключённые из МСП (отток из базы РТК)</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="f-new">
+              <span>Созданные за последний год</span>
+            </label>
+          </div>
+
+          <button class="link-btn" id="f-reset">Сбросить все фильтры</button>
+        </aside>
+
+        <div class="radar__main">
+          <div class="map-card">
+            <div id="map" class="map"></div>
+            <div class="map-toolbar">
+              <span class="map-badge" id="map-bbox-status">Весь регион · приблизьте карту для выбора точек</span>
+              <button class="rt-btn rt-btn--sm rt-btn--ghost map-reset-btn" id="map-fit" hidden>Весь регион</button>
+            </div>
+            <div class="map-legend">
+              <span><i class="dot dot--our"></i>Наши клиенты РТК</span>
+              <span><i class="dot dot--their"></i>Потенциал (не наши)</span>
+              <span><i class="dot dot--closed"></i>Исключён из МСП</span>
+            </div>
+          </div>
+
+          <div class="table-card">
+            <div class="table-card__head">
+              <div class="subtabs" id="radar-subtabs">
+                <button class="rt-tab rt-tab--active" data-subtab="zones">Зоны и распределение</button>
+                <button class="rt-tab" data-subtab="companies">Компании в выборке <span class="tab-count" id="comp-tab-count"></span></button>
+              </div>
+              <span class="meta" id="zones-count"></span>
+            </div>
+
+            <div class="table-wrap" id="wrap-zones">
+              <table class="table" id="zones">
+                <thead><tr>
+                  <th>Территория</th>
+                  <th class="num">Всего</th>
+                  <th>Наши РТК / Не наши</th>
+                  <th class="num">Выручка, млн ₽</th>
+                  <th class="num">Не по рег. (*)</th>
+                  <th>Ведущая отрасль</th>
+                </tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <div class="table-wrap" id="wrap-companies" hidden>
+              <table class="table" id="companies-table">
+                <thead><tr>
+                  <th>Компания / ИНН</th>
+                  <th>Статус</th>
+                  <th>Локация (факт / регистрация *)</th>
+                  <th>Отрасль</th>
+                  <th class="num">Выручка, млн ₽</th>
+                </tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <p class="empty" id="zones-empty" hidden>Нет компаний по выбранным фильтрам или на данном участке карты. <button class="link-btn" data-reset>Сбросить фильтры и зум</button></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-invest" hidden>
+      <div class="page-head">
+        <div>
+          <h1>Инвестиционный навигатор</h1>
+          <p class="meta" id="invest-meta"></p>
+        </div>
+        <button class="rt-btn rt-btn--primary" data-export="invest">Выгрузить CSV</button>
+      </div>
+      <div class="stats" id="invest-stats"></div>
+      <div class="table-card">
+        <div class="table-wrap">
+          <table class="table" id="projects">
+            <thead><tr>
+              <th>Проект</th><th>Территория</th><th>Сроки</th><th class="num">Объём, млн ₽</th><th class="num">Рабочих мест</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-calc" hidden>
+      <div class="page-head">
+        <div>
+          <h1>Калькулятор сделок</h1>
+          <p class="meta">Мониторинг и диспетчеризация зданий · прайс и коэффициенты из справочника кейса</p>
+        </div>
+      </div>
+      <div class="calc">
+        <div class="table-card">
+          <div class="table-wrap">
+            <table class="table" id="price">
+              <thead><tr><th>Компонент</th><th>Система</th><th class="num">Цена, ₽</th><th class="num">Кол-во</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <aside class="summary rt-card">
+          <label class="field">Уровень проекта
+            <select class="rt-input" id="c-level">
+              <option value="1">Базовый — мониторинг</option>
+              <option value="1.3">Продвинутый — + управление</option>
+              <option value="1.6">Экспертный — + авторегулирование</option>
+            </select>
+          </label>
+          <dl class="summary__rows">
+            <div><dt>Оборудование</dt><dd id="s-equip">0 ₽</dd></div>
+            <div><dt>ПИР, ПНР, шеф-монтаж (30%)</dt><dd id="s-works">0 ₽</dd></div>
+            <div><dt>Коэф. региона (Юг)</dt><dd>× 1,1</dd></div>
+          </dl>
+          <div class="summary__total">
+            <span>Ориентир цены</span>
+            <strong id="s-total">0 ₽</strong>
+          </div>
+          <button class="rt-btn rt-btn--primary summary__cta" disabled>Сформировать КП</button>
+          <p class="hint">Выберите количество компонентов слева</p>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

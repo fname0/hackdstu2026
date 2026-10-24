@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rt}
+      POSTGRES_USER: ${POSTGRES_USER:-rt}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rt_local_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rt} -d ${POSTGRES_DB:-rt}"]
+      interval: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rt}:${POSTGRES_PASSWORD:-rt_local_dev}@db:5432/${POSTGRES_DB:-rt}
+      REGION: "61"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app/backend
+      - ./data/seed:/app/data/seed:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: node:24-slim
+    working_dir: /repo/frontend
+    command: sh -c "npm install --no-audit --no-fund && npm run dev"
+    environment:
+      API_URL: http://api:8000
+      VITE_POLLING: "1"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/repo/frontend
+      - ./assets/brand:/repo/assets/brand:ro
+      - ./.env:/repo/.env:ro
+      - web_node_modules:/repo/frontend/node_modules
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  web_node_modules:

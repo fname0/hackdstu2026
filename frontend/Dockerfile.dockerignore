@@ -1,0 +1,10 @@
+.git
+.env
+data
+prototype
+docs
+backend
+**/node_modules
+**/dist
+*.xlsx
+.claude

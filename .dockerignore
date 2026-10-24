@@ -1,0 +1,9 @@
+.git
+.env
+data
+prototype
+docs
+node_modules
+frontend
+**/__pycache__
+*.xlsx

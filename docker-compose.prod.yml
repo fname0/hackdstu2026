@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rt}
+      POSTGRES_USER: ${POSTGRES_USER:-rt}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+      RT_READER_PASSWORD: ${RT_READER_PASSWORD:?задайте RT_READER_PASSWORD в .env}
+    command: ["postgres", "-c", "password_encryption=scram-sha-256", "-c", "max_connections=50"]
+    ports:
+      - "${DB_PUBLIC_PORT:-15432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rt} -d ${POSTGRES_DB:-rt}"]
+      interval: 3s
+      retries: 30
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    command: ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rt}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rt}
+      REGION: "61"
+    volumes:
+      - ./data/seed:/app/data/seed:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        DGIS_API_KEY: ${DGIS_API_KEY:-}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
