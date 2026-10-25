@@ -1,0 +1,2 @@
+# Only needed for the offline public-act table parser
+lxml==6.1.3

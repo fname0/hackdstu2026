@@ -52,6 +52,7 @@
     const { initDeck, Deck2gisLayer } = window.deck2gisLayer;
     const dk = initDeck(map, deck.Deck, { antialiasing: 'msaa' });
 
+    // Шкала бренда: лавандовый → фиолетовый → оранжевый (верх шкалы)
     const RANGE = [[232, 210, 237], [196, 170, 255], [148, 102, 255], [119, 0, 255], [119, 0, 255], [255, 79, 18]];
 
     const hex = new Deck2gisLayer({
@@ -74,6 +75,6 @@
     map.on('styleload', () => { sync(); setStatus(`Карта загружена · ${pts.length} демо-точек`); });
     document.getElementById('l-hex').addEventListener('change', sync);
     document.getElementById('l-pts').addEventListener('change', sync);
-</script>
+  </script>
 </body>
 </html>

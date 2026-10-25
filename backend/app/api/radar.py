@@ -1,3 +1,7 @@
+"""API модуля «Радар присутствия».
+
+Все числа берутся из таблиц, загруженных backend/load/load_radar.py. Баллы — оценка (см. docs/RADAR.md).
+"""
 import csv
 import functools
 import io
@@ -13,8 +17,10 @@ from backend.app.db import one, rows
 
 router = APIRouter(prefix="/api/radar", tags=["radar"])
 
-def cached(ttl: int = 300):
 
+def cached(ttl: int = 300):
+    """Кэш ответа на ttl секунд: сводка, районы и справочники между перезагрузками данных не меняются.
+    Особенно заметно при запуске через start.bat, где каждый запрос к базе идёт по сети до VPS."""
     def deco(fn):
         store: dict = {}
 
@@ -39,9 +45,11 @@ LIST_COLUMNS = """inn, name_short, kind, category, industry, okved_main, municip
     location_precision, flag_zero_income, flag_check_category, rtk_in_same_building,
     geo_lat, geo_lon"""
 
-def _clean(d: dict) -> dict:
 
+def _clean(d: dict) -> dict:
+    """NaN/Infinity → None, чтобы ответ был валидным JSON."""
     return {k: (None if isinstance(v, float) and not math.isfinite(v) else v) for k, v in d.items()}
+
 
 @router.get("/summary")
 @cached()
@@ -55,7 +63,7 @@ def summary():
                       count(*) FILTER (WHERE income_2025 IS NOT NULL) AS with_income,
                       count(*) FILTER (WHERE geom IS NOT NULL) AS with_point,
                       sum(income_2025) AS income_sum
-               FROM companies""")
+               FROM companies WHERE coalesce(industry, '') <> 'Госсектор'""")
     z = one("SELECT sum(left_month) AS left_month, count(*) FILTER (WHERE white_spot) AS white_spots, count(*) AS zones FROM zones")
     churn = rows("SELECT msp_status, churn_type, count(*) AS n FROM clients GROUP BY 1, 2 ORDER BY n DESC")
     meta = {r["name"]: json.loads(r["data"]) for r in rows("SELECT name, data FROM meta")}
@@ -65,10 +73,12 @@ def summary():
                    "msp_prev_release": radar_meta.get("msp_prev_release"),
                    "sources": "ФНС России (реестр МСП, доходы, численность, спецрежимы), DaData (ЕГРЮЛ), OpenStreetMap"})
 
+
 @router.get("/zones")
 def zones():
-
+    """GeoJSON муниципалитетов со всеми метриками — для раскраски карты."""
     return JSONResponse(_zones_geojson())
+
 
 @cached()
 def _zones_geojson():
@@ -78,11 +88,16 @@ def _zones_geojson():
     features = [{"type": "Feature", "geometry": json.loads(r.pop("g")), "properties": _clean(r)} for r in data]
     return {"type": "FeatureCollection", "features": features}
 
+
 @router.get("/zones/metrics")
 def zone_metrics(kind: list[str] | None = Query(None), industry: list[str] | None = Query(None),
                  income_min: float | None = None, income_max: float | None = None,
                  growth_min: float | None = None, include_no_income: bool = True):
+    """Сырые метрики муниципалитетов под фильтры (отрасль, вид, доход) — потенциал считает браузер по весам пользователя.
 
+    Фильтр «клиенты РТК / потенциальные» сюда не применяется: охват — это доля клиентов среди всех компаний.
+    Рост дохода — 2025 к 2024 по одним и тем же юрлицам (у кого есть доход за оба года); помесячных доходов ФНС не публикует.
+    """
     where, p = _where("all", kind, industry, None, income_min, income_max, growth_min, include_no_income, None, None, False)
     data = rows(f"""SELECT oktmo,
                            count(*) AS companies,
@@ -95,6 +110,7 @@ def zone_metrics(kind: list[str] | None = Query(None), industry: list[str] | Non
                     FROM companies WHERE {where} AND oktmo IS NOT NULL GROUP BY oktmo""", **p)
     return [_clean(r) for r in data]
 
+
 @router.get("/white-spots")
 @cached()
 def white_spots():
@@ -103,23 +119,26 @@ def white_spots():
                   coverage_vs_region, white_spot_reason, income_growth_pct, f_income, f_growth, f_gap
            FROM zones WHERE white_spot ORDER BY potential DESC""")]
 
+
 @router.get("/churn")
 @cached()
 def churn():
-
+    """Клиенты РТК: выбывшие из реестра МСП и ранний сигнал (в реестре есть, в ЕГРЮЛ — ликвидация/банкротство)."""
     cols = "inn, coalesce(dd_name, client_name_xlsx) AS name, kind, municipality, okved_main, msp_status, churn_type, churn_risk, dd_status, dd_liquidation_date"
     return {
         "left": [_clean(r) for r in rows(f"SELECT {cols} FROM clients WHERE churn_type IS NOT NULL ORDER BY dd_liquidation_date DESC NULLS LAST")],
         "risk": [_clean(r) for r in rows(f"SELECT {cols} FROM clients WHERE churn_risk IS NOT NULL ORDER BY dd_status, name")],
     }
 
+
 @router.get("/industries")
 @cached()
 def industries():
-    return rows("SELECT industry, count(*) AS n, count(*) FILTER (WHERE is_rtk_client) AS rtk FROM companies GROUP BY 1 ORDER BY n DESC")
+    return rows("SELECT industry, count(*) AS n, count(*) FILTER (WHERE is_rtk_client) AS rtk FROM companies WHERE coalesce(industry, '') <> 'Госсектор' GROUP BY 1 ORDER BY n DESC")
+
 
 def _where(client, kind, industry, oktmo, income_min, income_max, growth_min, include_no_income, bbox, q, only_points):
-    w, p = ["true"], {}
+    w, p = ["coalesce(industry, '') <> 'Госсектор'"], {}
     if client == "rtk":
         w.append("is_rtk_client")
     elif client == "other":
@@ -152,6 +171,7 @@ def _where(client, kind, industry, oktmo, income_min, income_max, growth_min, in
         w.append("(inn = :qe OR lower(name) LIKE :ql)"); p.update(qe=q.strip(), ql=f"%{q.strip().lower()}%")
     return " AND ".join(w), p
 
+
 def _filters(client: Literal["all", "rtk", "other"] = "all",
              kind: list[str] | None = Query(None), industry: list[str] | None = Query(None),
              oktmo: list[str] | None = Query(None),
@@ -161,8 +181,10 @@ def _filters(client: Literal["all", "rtk", "other"] = "all",
     return dict(client=client, kind=kind, industry=industry, oktmo=oktmo, income_min=income_min,
                 income_max=income_max, growth_min=growth_min, include_no_income=include_no_income, bbox=bbox, q=q)
 
+
 SORTS = {"lead_score": "lead_score DESC NULLS LAST", "income": "income_2025 DESC NULLS LAST",
          "growth": "income_growth_pct DESC NULLS LAST", "name": "name_short"}
+
 
 @router.get("/companies")
 def companies(client: Literal["all", "rtk", "other"] = "all",
@@ -177,18 +199,20 @@ def companies(client: Literal["all", "rtk", "other"] = "all",
                  **p, lim=limit, off=offset)
     return {"total": total, "items": [_clean(r) for r in items]}
 
+
 @router.get("/points")
 def points(client: Literal["all", "rtk", "other"] = "all",
            kind: list[str] | None = Query(None), industry: list[str] | None = Query(None),
            oktmo: list[str] | None = Query(None), income_min: float | None = None, income_max: float | None = None,
            growth_min: float | None = None, include_no_income: bool = True, bbox: str | None = None,
            limit: int = Query(5000, le=20000)):
-
+    """Компании с точными координатами — для слоя точек и сот H3 на карте."""
     where, p = _where(client, kind, industry, oktmo, income_min, income_max, growth_min, include_no_income, bbox, None, True)
     data = rows(f"""SELECT inn, name_short, kind, industry, is_rtk_client, lead_score, income_2025,
                            geo_lat AS lat, geo_lon AS lon, geo_precision
                     FROM companies WHERE {where} ORDER BY lead_score DESC NULLS LAST LIMIT :lim""", **p, lim=limit)
     return [_clean(r) for r in data]
+
 
 @router.get("/companies/{inn}")
 def company(inn: str):
@@ -211,6 +235,7 @@ def company(inn: str):
                 "отрасль, продукты, балл": "оценка команды (backend/etl/products.py, scoring.py)",
             }}
 
+
 EXPORT_COLUMNS = [("inn", "ИНН"), ("name_export", "Наименование"), ("kind", "Вид"), ("category", "Категория"),
                   ("industry", "Отрасль"), ("okved_main", "ОКВЭД"), ("municipality", "Муниципалитет"),
                   ("place", "Населённый пункт"), ("legal_address", "Юр. адрес (ЕГРЮЛ)"),
@@ -219,13 +244,15 @@ EXPORT_COLUMNS = [("inn", "ИНН"), ("name_export", "Наименование")
                   ("lead_score", "Потенциал (оценка)"), ("products", "Рекомендованные продукты"),
                   ("dd_status", "Статус ЕГРЮЛ"), ("reloc_signals", "Регистрация ≠ место работы")]
 
-def _export_rows(where, p, limit=20000):
 
+def _export_rows(where, p, limit=20000):
+    # Наименование: из ЕГРЮЛ (DaData), если есть, — в реестре МСП встречаются битые кавычки вроде ООО "АГРАМ-ЮГ""
     cols = ", ".join("coalesce(dd_name, nullif(name_short, ''), name) AS name_export" if c == "name_export" else c for c, _ in EXPORT_COLUMNS)
     return rows(f"SELECT {cols} FROM companies WHERE {where} ORDER BY lead_score DESC NULLS LAST LIMIT :lim", **p, lim=limit)
 
-def _csv_value(v):
 
+def _csv_value(v):
+    """Значение для русского Excel: целые без «.0», дробные через запятую, булевы — Да/Нет."""
     if v is None:
         return ""
     if isinstance(v, bool):
@@ -235,6 +262,7 @@ def _csv_value(v):
             return ""
         return str(int(v)) if v.is_integer() else f"{v:.1f}".replace(".", ",")
     return v
+
 
 @router.get("/export.csv")
 def export_csv(client: Literal["all", "rtk", "other"] = "all",
@@ -251,6 +279,7 @@ def export_csv(client: Literal["all", "rtk", "other"] = "all",
     return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv; charset=utf-8",
                              headers={"Content-Disposition": "attachment; filename=radar_leads.csv"})
 
+
 @router.get("/export/crm")
 def export_crm(format: Literal["amocrm", "bitrix24"] = "amocrm",
                client: Literal["all", "rtk", "other"] = "other",
@@ -258,7 +287,15 @@ def export_crm(format: Literal["amocrm", "bitrix24"] = "amocrm",
                oktmo: list[str] | None = Query(None), income_min: float | None = None, income_max: float | None = None,
                growth_min: float | None = None, include_no_income: bool = True, bbox: str | None = None,
                q: str | None = None, limit: int = Query(20000, le=20000)):
+    """Лиды для загрузки в CRM через их REST API (те же фильтры и порядок, что у CSV).
 
+    amoCRM (API v4): `companies` — тело для POST /api/v4/companies (имя, стандартное поле ADDRESS, теги);
+        `notes` — примечания с ИНН, отраслью, продуктами и потенциалом: после создания компаний
+        POST /api/v4/companies/notes, подставив id компании по `company_index`.
+        Пользовательские поля (ИНН и т. п.) в amoCRM задаются по field_id конкретного аккаунта, поэтому идут в примечание.
+    Bitrix24: список вызовов crm.company.add (`fields` + `params`); тип компании и сфера — коды из справочников Bitrix24;
+        ИНН — в ORIGIN_ID (внешний ключ для дедупликации) и в комментарии.
+    """
     where, p = _where(client, kind, industry, oktmo, income_min, income_max, growth_min, include_no_income, bbox, q, False)
     data = [_clean(r) for r in _export_rows(where, p, limit)]
 
@@ -269,7 +306,7 @@ def export_crm(format: Literal["amocrm", "bitrix24"] = "amocrm",
         if r["income_2025"] is not None:
             parts.append(f"Доход 2025: {r['income_2025']:,.0f} ₽".replace(",", " "))
         if r["dd_status"] and r["dd_status"] != "действует":
-            parts.append(f"Статус ЕГРЮЛ: {r['dd_status']}")
+            parts.append(f"Статус: {r['dd_status']}")
         return ". ".join(parts) + ". Источник: ФНС (реестр МСП, ЕГРЮЛ), радар РТК."
 
     if format == "amocrm":
@@ -300,6 +337,8 @@ def export_crm(format: Literal["amocrm", "bitrix24"] = "amocrm",
         } for r in data]
     return JSONResponse(payload, headers={"Content-Disposition": f"attachment; filename=radar_{format}.json"})
 
+
+# Отрасль радара → код сферы деятельности Bitrix24 (стандартный справочник INDUSTRY), остальное — OTHER
 BITRIX_INDUSTRY = {"ИТ и связь": "IT", "Производство": "MANUFACTURING", "Финансы и страхование": "FINANCE",
                    "Госсектор": "GOVERNMENT", "Транспорт и логистика": "DELIVERY", "Досуг и спорт": "ENTERTAINMENT",
                    "Профессиональные услуги": "CONSULTING"}

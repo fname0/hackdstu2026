@@ -1,5 +1,12 @@
-
-
+/**
+ * Потенциал района в браузере: те же формулы, что в backend/etl/scoring.py, но веса задаёт пользователь,
+ * а сырые метрики приходят под текущие фильтры (отрасль, вид субъекта, доход) — /api/radar/zones/metrics.
+ *
+ *   доход     = суммарный доход юрлиц района за 2025 → место среди районов (0…1)
+ *   рост      = изменение суммарного дохода 2025 к 2024 по одним и тем же юрлицам, % → место среди районов
+ *   недоохват = 1 − охват района / средний охват (0 клиентов → 1, средний и выше → 0)
+ *   потенциал = Σ вес_i × фактор_i, веса нормируются к 100
+ */
 import type { BaseZoneCollection, ZoneCollection, ZoneFeature, ZoneProps, ZoneStat } from '../api';
 
 export interface Weights { income: number; growth: number; gap: number }
@@ -11,6 +18,7 @@ export const FACTOR_LABELS: Record<keyof Weights, { label: string; hint: string 
 };
 const LOW_COVERAGE = 0.75;
 
+/** Перцентиль 0…1 среди районов; пустые значения — в самом низу. */
 function pctRank(values: (number | null)[]) {
   const sorted = values.filter((v): v is number => v != null).sort((a, b) => a - b);
   const n = sorted.length;
@@ -19,7 +27,7 @@ function pctRank(values: (number | null)[]) {
     let lo = 0, hi = n;
     while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m] < v) lo = m + 1; else hi = m; }
     let up = lo; while (up < n && sorted[up] === v) up++;
-    return n === 1 ? 1 : ((lo + up - 1) / 2) / (n - 1);
+    return n === 1 ? 1 : ((lo + up - 1) / 2) / (n - 1); // среднее место для одинаковых значений
   });
 }
 

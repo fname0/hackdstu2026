@@ -1,3 +1,4 @@
+# Сборка фронта → статика в nginx (вариант 1, VPS)
 FROM node:24-slim AS build
 WORKDIR /repo/frontend
 COPY frontend/package.json frontend/package-lock.json* ./

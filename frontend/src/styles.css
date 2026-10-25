@@ -12,9 +12,10 @@ button { font: inherit; color: inherit; }
 .skeleton { border-radius: var(--rt-radius-sm); background: linear-gradient(90deg, var(--rt-surface) 25%, var(--rt-surface-3) 50%, var(--rt-surface) 75%); background-size: 200% 100%; animation: sk 1.2s infinite linear; }
 @keyframes sk { to { background-position: -200% 0; } }
 
+/* Каркас */
 .app { display: flex; flex-direction: column; height: 100%; }
 .app > main { flex: 1; min-height: 0; }
-.header { background: var(--rt-bg); border-bottom: 1px solid var(--rt-border-strong); padding: 0 24px; z-index: 20; }
+.header { position: relative; background: var(--rt-bg); border-bottom: 1px solid var(--rt-border-strong); padding: 0 24px; z-index: 1100; }  /* выше контролов карты: меню и подсказки шапки */
 .header__top { display: flex; align-items: center; gap: 16px; height: 60px; }
 .header__product { padding-left: 16px; border-left: 1px solid var(--rt-border-strong); color: var(--rt-text-secondary); font-size: var(--rt-fs-small); }
 .header__right { margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: var(--rt-fs-small); }
@@ -25,6 +26,7 @@ button { font: inherit; color: inherit; }
 
 .radar { display: grid; grid-template-columns: 300px minmax(0, 1fr) 400px; height: 100%; min-height: 0; }
 
+/* Фильтры */
 .filters { overflow-y: auto; padding: 20px; border-right: 1px solid var(--rt-border-strong); display: flex; flex-direction: column; gap: 20px; }
 .field { display: flex; flex-direction: column; gap: 8px; }
 .field__label { font-size: var(--rt-fs-caption); color: var(--rt-text-muted); }
@@ -39,6 +41,7 @@ button { font: inherit; color: inherit; }
 .chips--scroll { max-height: 260px; overflow-y: auto; }
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid var(--rt-border-strong); border-radius: var(--rt-radius-xs); background: var(--rt-bg); font-size: 13px; cursor: pointer; }
 .chip span { color: var(--rt-text-muted); font-variant-numeric: tabular-nums; }
+.chips:not(.chips--scroll) .chip, .filters .chip { max-width: 100%; }
 .chip:hover { border-color: var(--rt-text-50); }
 .chip.is-active { background: var(--rt-purple-10); border-color: var(--rt-purple); color: var(--rt-purple); }
 .chip--static { cursor: default; background: var(--rt-surface); border-color: transparent; }
@@ -48,8 +51,9 @@ button { font: inherit; color: inherit; }
 .link-btn:disabled { color: var(--rt-text-50); cursor: default; }
 .legend-dots { display: flex; align-items: center; gap: 6px; font-size: var(--rt-fs-caption); color: var(--rt-text-secondary); }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 0 0 1px var(--rt-border-strong); }
-.dot--rtk { background: var(--rt-purple); } .dot--other { background: var(--rt-orange); margin-left: 8px; }
+.dot--rtk { background: var(--rt-purple); } .dot--gov { background: var(--rt-orange); border-color: var(--rt-text); box-shadow: 0 0 0 1px var(--rt-text); } .dot--other { background: var(--rt-orange); margin-left: 8px; }
 
+/* Карта */
 .radar__map { position: relative; min-width: 0; }
 .map-wrap, .map { position: absolute; inset: 0; }
 .map-toolbar { position: absolute; top: 12px; left: 12px; z-index: 5; max-width: calc(100% - 80px); }
@@ -57,12 +61,14 @@ button { font: inherit; color: inherit; }
 .segmented--map button { white-space: nowrap; }
 .map-legend { position: absolute; left: 12px; bottom: 12px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: calc(100% - 120px);
   padding: 8px 12px; border-radius: var(--rt-radius-xs); background: rgba(255, 255, 255, .95); box-shadow: var(--rt-shadow-sm); font-size: var(--rt-fs-caption); color: var(--rt-text-secondary); }
-.legend-bar { width: 90px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #F3ECF8, #E8D2ED, #C4AAFF, #9466FF, #7700FF); }
+.legend-group { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.legend-bar { flex: none; width: 90px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #F3ECF8, #E8D2ED, #C4AAFF, #9466FF, #7700FF); }
 .legend-spot { padding-left: 10px; border-left: 3px solid var(--rt-orange); }
 .legend-note { flex-basis: 100%; color: var(--rt-text-muted); }
 .map-tip { position: absolute; z-index: 6; pointer-events: none; padding: 6px 10px; border-radius: var(--rt-radius-xs); background: var(--rt-text); color: #fff; font-size: var(--rt-fs-caption); white-space: nowrap; }
 .map-error { position: absolute; inset: 0; display: grid; place-items: center; color: var(--rt-error); font-size: var(--rt-fs-small); }
 
+/* Веса потенциала */
 .weights { padding: 16px 20px; border-bottom: 1px solid var(--rt-border-strong); background: var(--rt-surface-3); }
 .weights__head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
 .weights h3 { font-size: var(--rt-fs-small); line-height: 20px; }
@@ -72,6 +78,7 @@ button { font: inherit; color: inherit; }
 .meta--warn { color: var(--rt-orange); }
 .map-filter-note { margin-top: 8px; display: inline-block; padding: 4px 10px; border-radius: var(--rt-radius-xs); background: rgba(255, 255, 255, .95); box-shadow: var(--rt-shadow-sm); font-size: var(--rt-fs-caption); color: var(--rt-purple); }
 
+/* Правая панель */
 .radar__side { overflow-y: auto; border-left: 1px solid var(--rt-border-strong); }
 .panel { padding: 20px; display: flex; flex-direction: column; gap: 20px; }
 .panel__head .zone-title { font-size: var(--rt-fs-h3); line-height: var(--rt-lh-h3); margin: 8px 0 4px; }
@@ -95,6 +102,7 @@ button { font: inherit; color: inherit; }
 .list__main { flex: 1; min-width: 0; }
 .score { flex: none; min-width: 40px; text-align: right; font-weight: 500; color: var(--rt-purple); font-variant-numeric: tabular-nums; }
 .badge { display: inline-block; padding: 0 7px; margin: 0 4px 0 0; border-radius: 4px; font-size: 11px; line-height: 20px; background: var(--rt-surface); color: var(--rt-text-secondary); vertical-align: 1px; }
+.badge--gov { background: var(--rt-cool-grey); color: var(--rt-text); }
 .badge--rtk { background: var(--rt-purple-10); color: var(--rt-purple); margin-left: 6px; }
 .badge--other { background: var(--rt-orange-10); color: var(--rt-orange); }
 .badge--spot { background: var(--rt-orange-10); color: var(--rt-orange); }
@@ -107,7 +115,8 @@ button { font: inherit; color: inherit; }
 .export .rt-btn { text-decoration: none; }
 .pager { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: var(--rt-fs-caption); color: var(--rt-text-secondary); }
 
-.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 100%); z-index: 50; background: var(--rt-bg); box-shadow: -8px 0 32px rgba(16, 24, 40, .12); overflow-y: auto; }
+/* Карточка компании */
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 100%); z-index: 1150; background: var(--rt-bg); box-shadow: -8px 0 32px rgba(16, 24, 40, .12); overflow-y: auto; }
 .drawer__head { position: sticky; top: 0; background: var(--rt-bg); padding: 14px 20px; border-bottom: 1px solid var(--rt-border); }
 .drawer__body { padding: 20px; display: flex; flex-direction: column; gap: 18px; }
 .drawer__body h2 { font-size: var(--rt-fs-h3); line-height: var(--rt-lh-h3); }
@@ -117,14 +126,154 @@ button { font: inherit; color: inherit; }
 .facts dd { margin: 0; }
 .sources { margin: 0; padding-left: 18px; font-size: var(--rt-fs-caption); color: var(--rt-text-secondary); display: flex; flex-direction: column; gap: 4px; }
 
+/* Инвестнавигатор */
+.invest { display: grid; grid-template-columns: 300px minmax(0, 1fr) 400px; height: 100%; min-height: 0; }
+.invest__main { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; }
+.invest__map { position: relative; flex: 1 1 auto; min-height: 180px; }
+.invest__side { overflow-y: auto; border-left: 1px solid var(--rt-border-strong); }
+.filters-toggle { display: none; }
+/* Плитки тянутся по ширине и переносятся без пустых серых ячеек (5 штук не делятся на 2 и 3 колонки) */
+.kpis { display: flex; flex-wrap: wrap; gap: 1px; background: var(--rt-border-strong); border-bottom: 1px solid var(--rt-border-strong); flex: none; }
+.kpi { flex: 1 1 140px; display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; background: var(--rt-bg); text-align: left; border: 0; min-width: 0; }
+.kpi--button { cursor: pointer; }
+.kpi--button:hover { background: var(--rt-surface-3); }
+.kpi--button.is-active { background: var(--rt-purple-10); box-shadow: inset 0 -2px 0 var(--rt-purple); }
+.kpi--button:focus-visible { outline: 2px solid var(--rt-purple); outline-offset: -2px; }
+.kpi__value { font-size: 22px; line-height: 28px; font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.kpi__value--accent { color: var(--rt-orange); }
+.kpi__label { font-size: var(--rt-fs-small); line-height: 18px; }
+.kpi__sub { font-size: 12px; line-height: 16px; color: var(--rt-text-muted); }
+.invest .kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.invest .kpi { padding: 12px 10px; }
+.invest .kpi__label { overflow-wrap: anywhere; }
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .invest .kpi__value { font-size: 18px; line-height: 24px; }
+  .invest .kpi__label { font-size: 11px; line-height: 15px; }
+}
+@media (max-width: 639px) {
+  .invest .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .invest .kpi:last-child { grid-column: 1 / -1; }
+}
+.dot--hot { background: var(--rt-orange); } .dot--prep { background: var(--rt-purple); } .dot--build { background: #9466FF; }
+.dot--launch { background: var(--rt-light-blue); } .dot--done { background: var(--rt-text-muted); }
+.map-legend--compact { gap: 4px 12px; padding: 6px 10px; max-width: calc(100% - 24px); }
+.map-tip--wide { white-space: normal; max-width: 320px; display: flex; flex-direction: column; gap: 2px; }
+.map-tip--wide span { opacity: .8; }
+
+/* Таймлайн инвестсобытий — диаграмма Ганта */
+.gantt-box { --gantt-label: 240px; flex: none; padding: 6px 16px 12px; }
+/* Граница карта / таймлайн: тянется по вертикали */
+.splitter { flex: none; position: relative; height: 9px; margin-top: -4px; cursor: row-resize; touch-action: none; z-index: 6;
+  display: flex; align-items: center; justify-content: center; }
+.splitter::before { content: ''; position: absolute; left: 0; right: 0; top: 4px; height: 1px; background: var(--rt-border-strong); }
+.splitter__grip { position: relative; width: 40px; height: 5px; border-radius: 3px; background: var(--rt-border-strong); }
+.splitter:hover::before, .splitter:focus-visible::before, body.is-resizing .splitter::before { height: 2px; top: 3.5px; background: var(--rt-purple); }
+.splitter:hover .splitter__grip, .splitter:focus-visible .splitter__grip, body.is-resizing .splitter__grip { background: var(--rt-purple); }
+.splitter:focus-visible { outline: none; }
+body.is-resizing { cursor: row-resize; user-select: none; }
+body.is-resizing .map { pointer-events: none; }
+.timeline__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.timeline__head h3 { font-size: var(--rt-fs-small); line-height: 20px; }
+.timeline__head .meta { margin: 0; }
+.segmented--inline button { min-height: 28px; font-size: var(--rt-fs-caption); padding: 0 10px; flex: none; }
+.gantt-chart { position: relative; margin-top: 10px; overflow-y: auto; scrollbar-width: thin;
+  border: 1px solid var(--rt-border); border-radius: var(--rt-radius-xs); }
+.gantt-row { display: grid; grid-template-columns: var(--gantt-label) minmax(0, 1fr); align-items: center; width: 100%;
+  min-height: 34px; padding: 0; border: 0; border-bottom: 1px solid var(--rt-border); background: none; text-align: left; cursor: pointer; }
+.gantt-row:last-child { border-bottom: 0; }
+.gantt-row:hover { background: var(--rt-surface-3); }
+.gantt-row:focus-visible { outline: 2px solid var(--rt-purple); outline-offset: -2px; }
+.gantt-row.is-selected { background: var(--rt-purple-10); box-shadow: inset 3px 0 0 var(--rt-purple); }
+.gantt-row--axis { position: sticky; top: 0; z-index: 3; min-height: 28px; background: var(--rt-bg); cursor: default; border-bottom: 1px solid var(--rt-border-strong); }
+.gantt-row--axis:hover { background: var(--rt-bg); }
+.gantt-row--axis .gantt-row__label { font-size: 12px; color: var(--rt-text-muted); }
+.gantt-row__label { display: flex; flex-direction: column; min-width: 0; padding: 4px 12px; }
+.gantt-row__name { font-size: 13px; line-height: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gantt-row__title { font-size: 11px; line-height: 14px; color: var(--rt-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gantt-row__track { position: relative; height: 100%; min-height: 28px; border-left: 1px solid var(--rt-border); }
+.gantt-year { position: absolute; top: 0; bottom: 0; padding: 0; border: 0; border-left: 1px solid var(--rt-border); background: none; cursor: pointer;
+  font-size: 11px; line-height: 28px; color: var(--rt-text-secondary); font-variant-numeric: tabular-nums; text-align: center; overflow: hidden; }
+.gantt-year .y-short { display: none; }
+.gantt-chart { container-type: inline-size; }
+/* Подписи годов по ширине самой диаграммы, а не окна: «2026» → «26», при совсем узкой — через год */
+@container (max-width: 700px) {
+  .gantt-year { font-size: 10px; }
+  .gantt-year .y-full { display: none; }
+  .gantt-year .y-short { display: inline; }
+}
+@container (max-width: 520px) {
+  .gantt-year.is-odd:not(.is-now):not(.is-active) .y-short { visibility: hidden; }
+}
+.gantt-year:hover { color: var(--rt-purple); background: var(--rt-surface-3); }
+.gantt-year.is-now { color: var(--rt-purple); font-weight: 500; }
+.gantt-year.is-active { color: #fff; background: var(--rt-purple); }
+.gantt-window { position: absolute; top: 0; bottom: 0; background: var(--rt-orange-10); pointer-events: none; }
+.gantt-body { position: relative; }
+.gantt-window--body { z-index: 0; }
+.gantt-today { position: absolute; top: 0; bottom: 0; z-index: 2; width: 0; border-left: 2px solid var(--rt-purple); pointer-events: none; }
+.gantt-body .gantt-row { position: relative; z-index: 1; }
+.gantt-bar { position: absolute; top: 50%; height: 14px; margin-top: -7px; border-radius: 4px; background: #C4AAFF; overflow: hidden; }
+.gantt-bar.is-hot { background: var(--rt-orange); }
+.gantt-bar.is-prep { background: var(--rt-purple); }
+.gantt-bar.is-done { background: var(--rt-cool-grey); }
+.gantt-bar__sum { display: block; padding: 0 6px; font-size: 10px; line-height: 14px; color: #fff; white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; }
+.gantt-bar.is-done .gantt-bar__sum, .gantt-bar:not(.is-hot):not(.is-prep) .gantt-bar__sum { color: var(--rt-text); }
+.gantt-mark { position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; transform: rotate(45deg); background: var(--rt-purple); border: 1.5px solid #fff; }
+.gantt-mark.is-hot { background: var(--rt-orange); }
+.gantt-mark.is-done { background: var(--rt-text-muted); }
+.gantt-late { position: absolute; top: 50%; transform: translate(-100%, -50%); padding-right: 4px; font-size: 10px; color: var(--rt-text-secondary); white-space: nowrap; }
+
+.clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.project-row { align-items: flex-start; }
+.project-row .score { padding-top: 2px; }
+.project-row__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 4px; font-size: 12px; color: var(--rt-text-secondary); }
+.tag { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 11px; line-height: 18px; background: var(--rt-surface); color: var(--rt-text-secondary); white-space: nowrap; }
+.tag--hot { background: var(--rt-orange-10); color: var(--rt-orange); }
+.tag--need { background: var(--rt-purple-10); color: var(--rt-purple); }
+.project-card__title { font-size: var(--rt-fs-h3); line-height: var(--rt-lh-h3); margin: 10px 0 4px; }
+.stat__value--hot { color: var(--rt-orange); }
+.project-card .stat__value { font-size: 16px; line-height: 22px; }
+.needs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.need { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: start; font-size: var(--rt-fs-small); line-height: 20px; }
+.need .tag { justify-self: start; }
+.need strong { font-weight: 500; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.actions .rt-btn { text-decoration: none; height: 40px; padding: 0 16px; font-size: var(--rt-fs-small); }
+.rt-btn:disabled { opacity: .45; cursor: not-allowed; }
+.gantt { margin-top: -8px; padding: 0 22px; }
+.gantt__track { position: relative; height: 14px; border-radius: 7px; background: var(--rt-surface); }
+.gantt__bar { position: absolute; top: 3px; height: 8px; border-radius: 4px; background: var(--rt-violet-light, #C4AAFF); }
+.gantt__window { position: absolute; top: 0; height: 14px; border-radius: 4px; background: var(--rt-orange); opacity: .55; }
+.gantt__now { position: absolute; top: -4px; width: 2px; height: 22px; margin-left: -1px; background: var(--rt-purple); }
+.gantt__scale { position: relative; height: 18px; margin-top: 4px; font-size: 11px; color: var(--rt-text-muted); font-variant-numeric: tabular-nums; }
+.gantt__scale span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.gantt__scale span:first-child { transform: none; }
+.gantt__scale span:last-child { transform: translateX(-100%); }
+.gantt__scale--top { margin: 0 0 2px; }
+.gantt__scale--top span, .gantt__scale--top span:first-child, .gantt__scale--top span:last-child { transform: translateX(-50%); }
+.gantt__now-label { color: var(--rt-purple); top: 0; }
+
+/* Адаптив */
+@media (min-width: 1680px) {
+  .radar, .invest, .calc { grid-template-columns: 320px minmax(0, 1fr) 440px; }
+}
 @media (max-width: 1279px) {
-  .radar { grid-template-columns: 260px minmax(0, 1fr) 340px; }
+  .radar, .invest { grid-template-columns: 260px minmax(0, 1fr) 340px; }
 }
 @media (max-width: 1023px) {
   .radar { display: flex; flex-direction: column; height: auto; }
   .filters { border-right: 0; border-bottom: 1px solid var(--rt-border-strong); }
   .radar__map { height: 60vh; min-height: 360px; }
   .radar__side { border-left: 0; overflow: visible; }
+  .invest { display: flex; flex-direction: column; height: auto; }
+  .invest__main { overflow: visible; }
+  .invest__map { flex: none; height: 55vh; min-height: 320px; }
+  .splitter { display: none; }
+  .gantt-chart { height: auto !important; max-height: 360px; }
+  .invest__side { border-left: 0; border-top: 1px solid var(--rt-border-strong); overflow: visible; }
+  .filters-toggle { display: inline-flex; align-self: flex-start; margin: 12px 16px 0; }
+  .invest .filters { display: none; }
+  .invest.is-filters-open .filters { display: flex; }
   .chips--scroll { max-height: none; flex-wrap: nowrap; overflow-x: auto; }
   .chips--scroll .chip { flex: none; }
 }
@@ -136,4 +285,171 @@ button { font: inherit; color: inherit; }
   .facts { grid-template-columns: 1fr; gap: 2px; }
   .facts dd { margin-bottom: 8px; }
   .map-legend .legend-note { display: none; }
+  .kpi { padding: 10px 12px; }
+  .kpi__value { font-size: 18px; line-height: 24px; }
+  .need { grid-template-columns: 1fr; gap: 4px; }
+  .gantt-box { --gantt-label: 120px; }
+  .gantt-row__label { padding: 4px 8px; }
 }
+
+/* Калькулятор сделок */
+.calc { display: grid; grid-template-columns: 300px minmax(0, 1fr) 400px; height: 100%; min-height: 0; }
+.calc__main { overflow-y: auto; min-width: 0; }
+.calc__side { overflow-y: auto; border-left: 1px solid var(--rt-border-strong); }
+.calc__params { gap: 18px; }
+.calc__title { font-size: 18px; line-height: 24px; }
+.calc__main .block__head .rt-btn { flex: none; white-space: nowrap; }
+.calc-from { display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: var(--rt-radius-xs); background: var(--rt-purple-10); font-size: var(--rt-fs-small); }
+.calc-client .rt-input { height: 40px; font-size: var(--rt-fs-small); }
+.calc .segmented button { min-height: 36px; }
+.spec { border: 1px solid var(--rt-border-strong); border-radius: var(--rt-radius-md); overflow: hidden; }
+.spec__row { display: grid; grid-template-columns: minmax(0, 1fr) 96px 132px 112px; align-items: center; gap: 12px; padding: 6px 14px;
+  border-top: 1px solid var(--rt-border); font-size: var(--rt-fs-small); line-height: 20px; }
+.spec__row .num { text-align: right; }
+.spec__row--head { border-top: 0; background: var(--rt-surface); font-size: 12px; color: var(--rt-text-muted); }
+.spec__row.is-zero .spec__name, .spec__row.is-zero > .num { color: var(--rt-text-50); }
+.spec__group-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 10px; padding: 10px 14px 6px;
+  border-top: 1px solid var(--rt-border-strong); font-size: var(--rt-fs-small); font-weight: 500; }
+.spec__group-head .sub { font-weight: 400; }
+.spec__qty { display: grid; grid-template-columns: 32px minmax(0, 1fr) 32px; justify-self: end; width: 132px; height: 32px;
+  border: 1px solid var(--rt-border-strong); border-radius: var(--rt-radius-xs); overflow: hidden; }
+.spec__qty button { border: 0; background: var(--rt-surface); cursor: pointer; font-size: 16px; color: var(--rt-text-70); }
+.spec__qty button:hover:not(:disabled) { color: var(--rt-purple); }
+.spec__qty button:disabled { color: var(--rt-text-50); cursor: default; }
+.spec__qty input { width: 100%; min-width: 0; border: 0; text-align: center; font: inherit; font-variant-numeric: tabular-nums; -moz-appearance: textfield; }
+.spec__qty input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.spec__qty input:focus { outline: 2px solid var(--rt-purple); outline-offset: -2px; }
+.spec__row--custom { grid-template-columns: minmax(0, 1fr) 96px 72px 112px; }
+.spec__row--custom .rt-input--sm { width: 100%; min-width: 0; }
+.spec__custom-sum { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.spec__add { margin: 8px 14px 10px; }
+.spec__add select { width: 100%; max-width: 440px; height: 36px !important; }
+.spec__total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 14px;
+  border-top: 1px solid var(--rt-border-strong); background: var(--rt-surface-3); font-weight: 500; }
+.spec__total .num { font-size: 18px; }
+.calc-summary.is-loading .fork, .calc-summary.is-loading .offer__price { opacity: .6; }
+.fork__item { border: 0; text-align: left; cursor: pointer; font: inherit; }
+.fork__item:hover { background: var(--rt-surface-3); }
+.fork__item.is-active { background: var(--rt-purple-10); box-shadow: inset 0 -2px 0 var(--rt-purple); }
+.fork__item .stat__value { font-size: 16px; line-height: 22px; overflow-wrap: anywhere; }
+.offer { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin: 12px 0; }
+.offer__price { font-size: 26px; line-height: 30px; font-weight: 500; color: var(--rt-orange); font-variant-numeric: tabular-nums; }
+.offer__input { display: flex; flex-direction: column; gap: 4px; }
+.offer__input .rt-input--sm { width: 132px; text-align: right; }
+.facts--tight { grid-template-columns: 130px 1fr; gap: 4px 12px; }
+.meta--error { color: var(--rt-error); }
+.mchart { position: relative; height: 150px; margin-top: 4px; padding-bottom: 46px; }
+.mchart svg { display: block; width: 100%; height: 104px; border-bottom: 1px solid var(--rt-border-strong); }
+.mchart__loss { fill: rgba(255, 71, 71, .08); }
+.mchart__fork { fill: var(--rt-purple-10); }
+.mchart__zero { stroke: var(--rt-border-strong); stroke-width: .6; stroke-dasharray: 2 2; }
+.mchart__line { fill: none; stroke: var(--rt-purple); stroke-width: 2; }
+.mchart__price { stroke: var(--rt-orange); stroke-width: 1.5; }
+.mchart__dot { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--rt-orange); border: 2px solid #fff;
+  box-shadow: 0 0 0 1px var(--rt-orange); pointer-events: none; }
+.mchart__label { position: absolute; top: -2px; transform: translateX(-50%); padding: 0 6px; border-radius: 4px; background: var(--rt-bg);
+  font-size: 11px; line-height: 16px; color: var(--rt-orange); white-space: nowrap; pointer-events: none; }
+.mchart__axis { position: relative; height: 16px; margin-top: 4px; font-size: 11px; color: var(--rt-text-muted); }
+.mchart__axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.mchart__range { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; margin: 0; accent-color: var(--rt-orange); }
+.calc-steps { list-style: none; margin: 0; padding: 0; font-size: var(--rt-fs-small); }
+.calc-steps li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--rt-border); }
+.calc-steps li .num { flex: none; text-align: right; }
+.calc-steps li.is-strong { font-weight: 500; }
+.list__row.is-current { color: var(--rt-purple); font-weight: 500; }
+@media (max-width: 1279px) {
+  .calc { grid-template-columns: 260px minmax(0, 1fr) 340px; }
+  .spec__row { grid-template-columns: minmax(0, 1fr) 84px 120px 96px; }
+  .spec__qty { width: 120px; }
+}
+@media (max-width: 1023px) {
+  .calc { display: flex; flex-direction: column; height: auto; }
+  .calc__params { border-right: 0; border-bottom: 1px solid var(--rt-border-strong); }
+  .calc__main { overflow: visible; }
+  .calc__side { border-left: 0; border-top: 1px solid var(--rt-border-strong); overflow: visible; }
+}
+/* Спецификация сжимается по ширине средней колонки, а не окна: на 1024–1279 колонка узкая и при широком экране */
+.calc__main { container: calc-main / inline-size; }
+@container calc-main (max-width: 600px) {
+  .spec__row { grid-template-columns: minmax(0, 1fr) 108px 84px; gap: 8px; padding: 6px 10px; }
+  .spec__row .spec__price, .spec__row--head span:nth-child(2) { display: none; }
+  .spec__qty { width: 108px; }
+  .spec__row--custom { grid-template-columns: minmax(0, 1fr) 80px; }
+  .spec__row--custom > :first-child { grid-column: span 2; }
+  .spec__group-head { padding: 10px 10px 6px; }
+}
+@media (max-width: 767px) {
+  .offer { flex-direction: column; align-items: flex-start; }
+  .stats--3.fork { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .fork__item { padding: 10px; }
+  .fork__item .stat__value { font-size: 14px; line-height: 20px; }
+}
+
+/* Обучалка: кнопка-лампочка в шапке и пошаговые подсказки (src/tour) */
+.tour-btn { position: relative; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--rt-border-strong);
+  border-radius: 50%; background: var(--rt-bg); color: var(--rt-purple); cursor: pointer; transition: background-color .15s var(--rt-ease); }
+.tour-btn:hover { background: var(--rt-purple-10); }
+.tour-btn:focus-visible { outline: 2px solid var(--rt-purple); outline-offset: 2px; }
+/* пока подсказки этой вкладки не открывали — маленькая оранжевая метка */
+.tour-btn--new::after { content: ''; position: absolute; top: 1px; right: 1px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--rt-orange); box-shadow: 0 0 0 2px var(--rt-bg); }
+
+.tour { position: fixed; inset: 0; z-index: 10000; } /* выше слоёв карты 2ГИС, у которых свой высокий z-index */
+.tour__blocker { position: absolute; inset: 0; }
+.tour__dim { position: absolute; background: rgba(16, 24, 40, .55); }
+/* «окно» вокруг блока: огромная тень вокруг прозрачного прямоугольника */
+.tour__spot { position: absolute; border-radius: 4px; box-shadow: 0 0 0 2px var(--rt-purple) inset, 0 0 0 4px rgba(119, 0, 255, .25);
+  pointer-events: none; }
+.tour__card { position: absolute; max-width: calc(100vw - 24px); padding: 18px 20px 14px; border-radius: var(--rt-radius-md); background: var(--rt-bg);
+  box-shadow: var(--rt-shadow-md), 0 12px 40px rgba(16, 24, 40, .25); outline: none; }
+.tour__step { font-size: var(--rt-fs-caption); color: var(--rt-purple); font-weight: 500; }
+.tour__title { margin: 4px 0 6px; font-size: 18px; line-height: 24px; }
+.tour__text { margin: 0; font-size: var(--rt-fs-small); line-height: 21px; color: var(--rt-text-85); }
+.tour__actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; }
+.tour__nav { display: flex; gap: 8px; }
+
+/* Адаптив по ширине колонок (container queries): одна и та же панель бывает узкой и на большом экране, и на планшете */
+.filters, .radar__side, .invest__side, .calc__side { container-type: inline-size; }
+/* Переключатели в узких колонках: подписи целиком, не влезающий вариант уходит на вторую строку */
+.filters .segmented, .radar__side .segmented, .invest__side .segmented { flex-wrap: wrap; }
+.filters .segmented button, .radar__side .segmented button, .invest__side .segmented button { flex: 1 1 auto; white-space: nowrap; }
+.segmented--map { flex-wrap: wrap; }
+.segmented--map button { flex: 1 1 auto; }
+@container (max-width: 380px) {
+  .stat { padding: 10px 12px; }
+  .stat__value { font-size: 15px; line-height: 22px; }
+  .fork__item { padding: 10px 8px; }
+  .fork__item .stat__value { font-size: 13px; line-height: 20px; white-space: nowrap; }
+  .factor { grid-template-columns: 104px 1fr 48px; gap: 8px; }
+  .facts { grid-template-columns: 112px 1fr; }
+}
+/* Сумма на полосе Ганта — только если полоса достаточно длинная, иначе не обрезаем на полуслове */
+.gantt-bar { container-type: inline-size; }
+@container (max-width: 64px) { .gantt-bar__sum { display: none; } }
+.gantt-bar__sum { text-overflow: ellipsis; }
+.gantt-chart { overflow-x: hidden; }
+
+/* Вкладки модулей: на телефоне короткие подписи, все три видны без прокрутки */
+.tab-short { display: none; }
+@media (max-width: 599px) {
+  .tab-full { display: none; }
+  .tab-short { display: inline; }
+  .tabs { gap: 20px; }
+}
+/* Сенсорные экраны: ссылки-кнопки с нормальной зоной нажатия */
+@media (pointer: coarse) {
+  .link-btn { min-height: 36px; }
+  .check { min-height: 28px; align-items: center; }
+}
+
+/* Надпись продукта — на базовой линии слова «Ростелеком» в логотипе (линия на 33 из 36 px), а не по центру картинки */
+.header__product { position: relative; top: 10px; line-height: 20px; }
+/* Тонкие полосы прокрутки во всех панелях: системные на Windows толстые и серые */
+* { scrollbar-width: thin; scrollbar-color: rgba(16, 24, 40, .2) transparent; }
+/* Длинная отрасль («Профессиональные услуги») переносится по левому краю, число остаётся справа на первой строке */
+.chip { height: auto; min-height: 30px; padding: 5px 10px; line-height: 18px; text-align: left; align-items: baseline; }
+.panel--gov { border-bottom: 1px solid var(--rt-border-strong); }
+
+/* Переключатели секторов в фильтрах радара: «Госсектор», «Частный сектор» */
+.check--section { align-items: center; font-size: var(--rt-fs-small); line-height: 20px; color: var(--rt-text); font-weight: 500; }
+.check--section input { margin: 0; width: 16px; height: 16px; }

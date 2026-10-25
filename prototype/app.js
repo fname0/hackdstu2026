@@ -10,6 +10,7 @@
   };
   const THIS_YEAR = 2026;
 
+  /* ---------- Навигация ---------- */
   const views = ['radar', 'invest', 'calc'];
   function route() {
     const v = views.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'radar';
@@ -21,22 +22,24 @@
   window.addEventListener('hashchange', route);
   history.scrollRestoration = 'manual';
 
+  /* ---------- Состояние Радара ---------- */
   const state = {
-    client: 'all',
+    client: 'all',      // 'all' | 'our' | 'their'
     revMin: null,
     revMax: null,
     place: '',
     useBbox: true,
     ind: new Set(),
     type: 'all',
-    onlyReloc: false,
-    onlyClosed: false,
+    onlyReloc: false,   // задача со *
+    onlyClosed: false,  // закрытые/исключённые из МСП
     onlyNew: false,
-    subtab: 'zones',
+    subtab: 'zones',    // 'zones' | 'companies'
   };
 
   let map, layer, isFitting = false;
 
+  /* ---------- Инициализация контролов фильтрации ---------- */
   const industries = Object.entries(companies.reduce((a, c) => (a[c.ind] = (a[c.ind] || 0) + 1, a), {}))
     .sort((a, b) => (a[0] === 'Прочее') - (b[0] === 'Прочее') || b[1] - a[1]);
 
@@ -156,6 +159,7 @@
     fitRegion();
   });
 
+  /* ---------- Выборка компаний ---------- */
   function isZoomedIn() {
     return map && map.getZoom() >= 9;
   }
@@ -201,6 +205,7 @@
     }).sort((a, b) => b.n - a.n);
   }
 
+  /* ---------- Карта ---------- */
   function initMap() {
     map = L.map('map', { zoomControl: true, scrollWheelZoom: true, attributionControl: true }).setView([47.7, 40.8], 7);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -257,14 +262,15 @@
       ? `В видимой области карты: ${fmt(list.length)} комп. (зум ${map.getZoom()})`
       : 'Обзор региона · приблизьте карту для выбора точек (как ПВЗ)';
 
+    /* Отрисовка карты */
     layer.clearLayers();
     const showIndividualPoints = (map && map.getZoom() >= 10) || list.length <= 180 || state.onlyReloc || state.onlyClosed;
 
     if (showIndividualPoints) {
-
+      // При приближении (или узком фильтре) рисуем конкретные точки компаний (как ПВЗ на карте)
       for (const c of list.slice(0, 600)) {
         const color = c.closed ? '#868B95' : (c.our ? '#7700FF' : '#FF4F12');
-
+        // Если включён фильтр «*» и регистрация внутри области — проводим пунктирную дугу от места регистрации
         if ((state.onlyReloc || list.length <= 80) && c.relocType === 'intra' && places[c.regPlace]) {
           L.polyline([places[c.regPlace], [c.lat, c.lon]], {
             color: '#7700FF', weight: 1.5, dashArray: '4 4', opacity: 0.55,
@@ -285,7 +291,7 @@
         ).addTo(layer);
       }
     } else {
-
+      // На уровне области рисуем агрегированные зоны с наглядным разделением Наши (#7700FF) vs Не наши (#FF4F12)
       for (const z of [...zs].reverse()) {
         const ll = places[z.place]; if (!ll) continue;
         const rTotal = 6 + Math.sqrt(z.n / max) * 28;
@@ -300,7 +306,7 @@
             radius: rTotal, color: '#fff', weight: 1.5, fillColor: '#FF4F12', fillOpacity: 0.85,
           }).bindTooltip(zoneTooltip(z)).on('click', () => zoomToPlace(z.place)).addTo(layer);
         } else {
-
+          // Режим «Все»: внешний круг — весь рынок/потенциал (оранжевый #FF4F12), внутреннее ядро — доля наших клиентов РТК (фиолетовый #7700FF)
           L.circleMarker(ll, {
             radius: rTotal, color: '#fff', weight: 1.5, fillColor: '#FF4F12', fillOpacity: 0.78,
           }).bindTooltip(zoneTooltip(z)).on('click', () => zoomToPlace(z.place)).addTo(layer);
@@ -315,6 +321,7 @@
       }
     }
 
+    /* Отрисовка таблиц (Зоны / Компании) */
     const hasData = list.length > 0;
     $('#zones-empty').hidden = hasData;
     $('#wrap-zones').hidden = !hasData || state.subtab !== 'zones';
@@ -393,6 +400,7 @@
     if (tr) zoomToPlace(tr.dataset.place);
   });
 
+  /* ---------- Инвестнавигатор ---------- */
   function stage(p) {
     if (!p.start || p.start > THIS_YEAR) return 'Проектирование';
     if (p.finish && p.finish < THIS_YEAR) return 'Запуск';
@@ -422,6 +430,7 @@
     </tr>`).join('');
   }
 
+  /* ---------- Калькулятор (справочник МОД3_Таб4) ---------- */
   const PRICE = [
     ['el_01', 'Смарт-счётчик (3-фазный)', 'Электроснабжение', 8500, 1.2],
     ['el_02', 'Датчик качества электроэнергии', 'Электроснабжение', 12000, 1.2],
@@ -469,6 +478,7 @@
     $('#c-level').addEventListener('change', recalc);
   }
 
+  /* ---------- Экспорт CSV ---------- */
   function csv(rows) {
     const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
     return '\uFEFF' + rows.map(r => r.map(q).join(';')).join('\r\n');

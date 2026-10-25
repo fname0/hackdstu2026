@@ -1,3 +1,15 @@
+"""Привязка субъектов реестра МСП к муниципальным образованиям (код ОКТМО, 8 цифр).
+
+В реестре адрес задан текстом: «р-н Аксайский», «РАЙОН МОРОЗОВСКИЙ», «г. Ростов-на-Дону», «ГОРОД ТАГАНРОГ».
+Справочник муниципалитетов — data/seed/geo/<регион>_municipalities.geojson (OSM + ОКТМО).
+
+Правило:
+  1) указан район → муниципальный район с тем же названием;
+  2) района нет, указан город → городской округ с этим названием,
+     а город внутри района (Аксай, Сальск…) → его район по справочнику TOWN_TO_DISTRICT;
+  3) нет ни района, ни города → населённый пункт по SETTLEMENT_TO_DISTRICT;
+  4) иначе — не привязан (oktmo = None), запись остаётся в данных, но не попадает в зоны.
+"""
 import json
 import re
 from pathlib import Path
@@ -5,6 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 GEO = ROOT / "data" / "seed" / "geo"
 
+# Города Ростовской области, которые не являются городскими округами, → их муниципальный район
 TOWN_TO_DISTRICT = {
     "аксай": "аксайский", "сальск": "сальский", "миллерово": "миллеровский",
     "белая калитва": "белокалитвинский", "красный сулин": "красносулинский",
@@ -13,6 +26,7 @@ TOWN_TO_DISTRICT = {
     "цимлянск": "цимлянский", "морозовск": "морозовский",
 }
 
+# Районные центры, которые иногда указаны без района и без города
 SETTLEMENT_TO_DISTRICT = {
     "чалтырь": "мясниковский", "тацинская": "тацинский", "вешенская": "шолоховский",
     "багаевская": "багаевский", "кагальницкая": "кагальницкий", "покровское": "неклиновский",
@@ -31,15 +45,17 @@ SETTLEMENT_TO_DISTRICT = {
 _PREFIX = re.compile(r"^(г\.?|город|р-н|район|станица|ст-ца|село|с\.|поселок|посёлок|п\.|рп|пгт|хутор|х\.|слобода|сл\.)\s+")
 _SUFFIX = re.compile(r"\s+(р-н|район)$")
 
-def norm(text: str) -> str:
 
+def norm(text: str) -> str:
+    """«РАЙОН МОРОЗОВСКИЙ» → «морозовский», «г. Ростов-на-Дону» → «ростов-на-дону»."""
     s = (text or "").strip().lower().replace("ё", "е")
     for _ in range(2):
         s = _PREFIX.sub("", s).strip()
     return _SUFFIX.sub("", s).strip()
 
-def load_reference(region: str = "61") -> dict:
 
+def load_reference(region: str = "61") -> dict:
+    """Ключ → (ОКТМО, название). Ключи: «аксайский» для районов, «таганрог» для городских округов."""
     path = GEO / {"61": "rostov_municipalities.geojson"}[region]
     ref = {}
     for f in json.loads(path.read_text(encoding="utf-8"))["features"]:
@@ -52,8 +68,9 @@ def load_reference(region: str = "61") -> dict:
         ref[key] = (p["oktmo"], p["short"])
     return ref
 
-def assign(district: str, city: str, settlement: str, ref: dict):
 
+def assign(district: str, city: str, settlement: str, ref: dict):
+    """Возвращает (oktmo, муниципалитет, способ привязки) или (None, None, 'не привязан')."""
     d, c, s = norm(district), norm(city), norm(settlement)
     if d and d in ref:
         return (*ref[d], "район из реестра")

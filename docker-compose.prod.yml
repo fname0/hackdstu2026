@@ -1,3 +1,7 @@
+# Вариант 1 — Docker на VPS: база, API и сайт поднимаются вместе.
+#   docker compose -f docker-compose.prod.yml up -d --build
+# Сайт: http://<IP VPS>/  (nginx отдаёт собранный фронт, /api проксирует в API на этом же сервере)
+# База: доступна снаружи на DB_PUBLIC_PORT — для варианта 2 (start.bat), только роль rt_reader с правом чтения.
 services:
   db:
     image: postgis/postgis:16-3.4
@@ -9,10 +13,10 @@ services:
       RT_READER_PASSWORD: ${RT_READER_PASSWORD:?задайте RT_READER_PASSWORD в .env}
     command: ["postgres", "-c", "password_encryption=scram-sha-256", "-c", "max_connections=50"]
     ports:
-      - "${DB_PUBLIC_PORT:-15432}:5432"
+      - "${DB_PUBLIC_PORT:-15432}:5432"   # нестандартный порт снаружи: меньше шума от сканеров
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./deploy/db-init:/docker-entrypoint-initdb.d:ro
+      - ./deploy/db-init:/docker-entrypoint-initdb.d:ro   # создаёт роль rt_reader при первом запуске
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rt} -d ${POSTGRES_DB:-rt}"]
       interval: 3s
@@ -24,11 +28,12 @@ services:
       dockerfile: backend/Dockerfile
     restart: unless-stopped
     command: ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    env_file: .env                      # AUTH_SECRET, SMTP_* — вход с кодом на почту (2FA)
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rt}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rt}
       REGION: "61"
     volumes:
-      - ./data/seed:/app/data/seed:ro
+      - ./data/seed:/app/data/seed:ro   # для перезагрузки данных: docker compose ... run --rm api python -m backend.load.load_radar
     depends_on:
       db:
         condition: service_healthy
@@ -42,6 +47,9 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - api
 

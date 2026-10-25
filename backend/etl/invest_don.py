@@ -1,4 +1,16 @@
-'Реестр инвестпроектов Ростовской области с invest-don.ru → data/seed/invest/invest_don_61.*'
+"""Реестр инвестпроектов Ростовской области с invest-don.ru → data/seed/invest/invest_don_61.*
+
+Открытый JSON API портала (тот же, что у его страницы «Реестр инвестиционных проектов»), без ключа:
+  GET map.invest-don.ru/api/GetProjectData?id=9149&page=1&rows=2000 — весь реестр: МО, название, статус, ввод,
+      рабочие места, «100 губернаторских», координаты;
+  GET map.invest-don.ru/api/GetObjectData/<row_id> — карточка: инициатор, начало, стоимость, create_date, modify_date.
+Ответы кэшируются в data/seed/invest/raw/ (список — с датой выгрузки, карточки — по row_id), повторный запуск
+скачивает только новые карточки. --refresh перекачивает список; modify_date есть только в карточке, поэтому
+обновлённые проекты находит только --refresh-cards (перекачивает все карточки).
+
+На выходе таблица с колонками как у листа xlsx (их дальше обрабатывает invest.py --source invest-don) плюс
+status, lat/lon, row_id, даты. Запуск: python -m backend.etl.invest_don [--workers 3] [--refresh]
+"""
 import argparse
 import html
 import json
@@ -19,11 +31,12 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "data" / "seed" / "invest"
 RAW = OUT / "raw"
 API = "https://map.invest-don.ru/api"
-REGISTRY = {"61": "9149"}
+REGISTRY = {"61": "9149"}  # «Реестр инвестиционных проектов»; 9232 — ключевые проекты
 UA = "rt-ecosystem-hackathon/0.1 (ETL, ~3 req/s)"
 
 _TOKEN = re.compile(r'class="(property|value)"\s*>\s*<div>(.*?)</div>', re.S)
 _NUM = re.compile(r"-?\d[\d\s]*(?:[.,]\d+)?")
+
 
 def get_json(url: str, tries: int = 4) -> dict:
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
@@ -36,6 +49,7 @@ def get_json(url: str, tries: int = 4) -> dict:
                 raise
             time.sleep(2 ** attempt)
 
+
 def fetch_list(region: str, refresh: bool) -> list[dict]:
     path = RAW / f"list_{REGISTRY[region]}.json"
     if refresh or not path.exists():
@@ -46,13 +60,14 @@ def fetch_list(region: str, refresh: bool) -> list[dict]:
     cached = json.loads(path.read_text(encoding="utf-8"))
     return cached["response"]["data"]["rows"], cached["requested_at"]
 
+
 def fetch_card(row_id: str, refresh: bool, pause: float) -> dict | None:
     path = RAW / "cards" / f"{row_id}.json"
     if path.exists() and not refresh:
         return json.loads(path.read_text(encoding="utf-8"))
     try:
         data = get_json(f"{API}/GetObjectData/{row_id}")
-    except Exception as e:
+    except Exception as e:  # сеть или сайт упали — карточку дозапросим в следующий запуск
         print(f"  карточка {row_id}: {e}", file=sys.stderr)
         return None
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -61,8 +76,10 @@ def fetch_card(row_id: str, refresh: bool, pause: float) -> dict | None:
     time.sleep(pause)
     return data
 
-def parse_card(card_html: str) -> dict:
 
+def parse_card(card_html: str) -> dict:
+    """HTML карточки → {свойство: значение}. Свойство-контейнер (период, стоимость) значения не имеет:
+    за ним идут вложенные свойства, их и берём («Начало», «Ввод в эксплуатацию», «Всего»)."""
     out, prop = {}, None
     for kind, text in _TOKEN.findall(card_html):
         text = html.unescape(re.sub(r"<[^>]+>", " ", text))
@@ -74,14 +91,17 @@ def parse_card(card_html: str) -> dict:
             prop = None
     return out
 
-def to_number(s) -> float | None:
 
+def to_number(s) -> float | None:
+    """«15 млн руб.» → 15.0, «1 500,5» → 1500.5, «5 мест» → 5.0."""
     m = _NUM.search(str(s or ""))
     return float(m.group(0).replace(" ", "").replace(",", ".")) if m else None
+
 
 def to_year(s) -> int | None:
     m = re.search(r"(19|20)\d{2}", str(s or ""))
     return int(m.group(0)) if m else None
+
 
 def list_row(r: dict) -> dict:
     o = r["0"]
@@ -89,7 +109,7 @@ def list_row(r: dict) -> dict:
     finish = next((q.get("value") for q in props.get("Период реализации проекта (годы)", {}).get("properties", [])
                    if q.get("name") == "Ввод в эксплуатацию"), None)
     feats = ((o.get("coord") or {}).get("value") or {}).get("features") or []
-
+    # Точка, а у участков и трасс — внутренняя точка полигона или линии
     geoms = [shape(f["geometry"]) for f in feats if f.get("geometry") and f["geometry"].get("coordinates")]
     c = unary_union(geoms).representative_point() if geoms else None
     pt = (round(c.x, 6), round(c.y, 6)) if c is not None and not c.is_empty else None
@@ -104,6 +124,7 @@ def list_row(r: dict) -> dict:
         "site_lon": pt[0] if pt else None, "site_lat": pt[1] if pt else None,
         "geo_objects": len(feats),
     }
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -133,7 +154,7 @@ def main():
         c = cards.get(r["row_id"])
         f = parse_card(c.get("html", "")) if c else {}
         recs.append({
-
+            # колонки как в листе xlsx — их понимает invest.py
             "src_no": r["row_id"], "mo_raw": f.get("Муниципальное образование") or r["mo_list"],
             "curator": f.get("Куратор проекта") or r["curator_list"],
             "is_key": "Да" if r["is_governor_100"] else "Нет",
@@ -142,7 +163,7 @@ def main():
             "start_year": to_year(f.get("Начало")), "finish_year": to_year(f.get("Ввод в эксплуатацию")) or r["finish_list"],
             "sum_mln": to_number(f.get("Всего")), "sum_raw": f.get("Всего"),
             "jobs": to_number(f.get("Количество новых рабочих мест")) or to_number(r["jobs_list"]),
-
+            # только с сайта
             "row_id": r["row_id"], "status": r["status"], "site_lat": r["site_lat"], "site_lon": r["site_lon"],
             "geo_objects": r["geo_objects"], "progress": f.get("Ход реализации проекта"),
             "create_date": (c or {}).get("create_date"), "modify_date": (c or {}).get("modify_date"),
@@ -165,6 +186,7 @@ def main():
     }
     (OUT / f"{stem}.meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(meta, ensure_ascii=False, indent=2))
+
 
 if __name__ == "__main__":
     main()

@@ -24,6 +24,7 @@ export interface Summary {
   clients_status: { msp_status: string; churn_type: string | null; n: number }[];
 }
 
+/** Район для карты и панелей: метрики пересчитаны под фильтры, потенциал — по весам пользователя (radar/potential.ts). */
 export interface ZoneProps {
   oktmo: string; municipality: string; short: string; kind: string;
   companies: number; ul: number; rtk_clients: number; rtk_share_pct: number; coverage_vs_region: number;
@@ -35,9 +36,10 @@ export interface ZoneProps {
 
 export interface ZoneFeature { type: 'Feature'; geometry: GeoJSON.Geometry; properties: ZoneProps }
 export interface ZoneCollection { type: 'FeatureCollection'; features: ZoneFeature[] }
-
+/** Границы и базовые поля района из базы (/api/radar/zones) — основа для пересчёта. */
 export interface BaseZoneCollection { type: 'FeatureCollection'; features: { type: 'Feature'; geometry: GeoJSON.Geometry; properties: Record<string, any> }[] }
 
+/** Сырые метрики района под фильтры — /api/radar/zones/metrics. */
 export interface ZoneStat {
   oktmo: string; companies: number; ul: number; rtk_clients: number;
   income_sum: number; income_cur: number; income_prev: number; new_month: number;
@@ -73,6 +75,37 @@ export function toParams(f: Filters, extra: Record<string, string | number | und
   return p;
 }
 
+/** Госсектор: учреждения с bus.gov.ru (слой радара). */
+export interface GovSummary {
+  available: boolean; institutions?: number; liquidating?: number; with_point?: number;
+  by_segment?: { key: string; n: number }[]; by_level?: { key: string; n: number }[];
+  complete?: boolean; built_at?: string; source?: string;
+  contracts?: { contracts: number; with_supplier: number; customers: number; rtk_share_by_count_pct: number; rtk_share_by_sum_pct: number;
+    sales_window: number; sales_window_sum_rub: number; by_operator: Record<string, number> } | null;
+}
+/** Контракт госсектора на связь (ЕИС, 44-ФЗ). */
+export interface GovContract {
+  reestr_number: string; customer_inn: string; customer: string; subject: string; service: string; price: number | null;
+  signed_date?: string | null; finish_date: string | null; is_active?: boolean; months_left: number | null;
+  supplier: string | null; supplier_inn?: string | null; operator: string | null; is_rtk?: boolean; supplier_known?: boolean;
+  sales_window?: boolean; segment?: string | null; municipality?: string | null; has_card?: boolean;
+}
+export interface GovPoint { inn: string; name_short: string; segment: string; level: string; lat: number; lon: number;
+  /** есть действующий контракт на связь с Ростелекомом (ЕИС) */
+  is_rtk_client: boolean }
+export interface GovRow {
+  inn: string; name_short: string | null; name: string; segment: string; level: string; inst_type: string;
+  municipality: string | null; oktmo: string | null; place: string | null; address: string; lat: number | null; lon: number | null;
+  phone: string | null; www: string | null; chief: string | null; chief_position: string | null; founder: string | null;
+  offer: string; is_liquidating: boolean;
+}
+
+function segParams(segment: string[]) {
+  const p = new URLSearchParams();
+  segment.forEach(s => p.append('segment', s));
+  return p;
+}
+
 async function get<T>(path: string): Promise<T> {
   const r = await fetch(path);
   if (!r.ok) throw new Error(`${r.status} ${path}`);
@@ -84,7 +117,7 @@ export const api = {
   zones: () => get<BaseZoneCollection>('/api/radar/zones'),
   industries: () => get<{ industry: string; n: number; rtk: number }[]>('/api/radar/industries'),
   churn: () => get<{ left: ChurnRow[]; risk: ChurnRow[] }>('/api/radar/churn'),
-
+  // клиентский фильтр, поиск, район и область карты на метрики районов не влияют — охват считается по всем компаниям
   zoneMetrics: (f: Filters) => {
     const p = toParams({ ...f, client: 'all', oktmo: [], q: '' });
     p.delete('client');
@@ -96,4 +129,16 @@ export const api = {
   company: (inn: string) => get<Record<string, any>>(`/api/radar/companies/${inn}`),
   exportCsvUrl: (f: Filters) => `/api/radar/export.csv?${toParams(f)}`,
   exportCrmUrl: (f: Filters, format: 'amocrm' | 'bitrix24') => `/api/radar/export/crm?${toParams(f, { format })}`,
+  govSummary: () => get<GovSummary>('/api/gov/summary'),
+  govPoints: (segment: string[]) => get<GovPoint[]>(`/api/gov/points?${segParams(segment)}`),
+  govZone: (oktmo: string, segment: string[]) =>
+    get<{ by_segment: { key: string; n: number }[]; total: number; items: GovRow[];
+      telecom: { contracts: number; rtk: number; sales_window: number } | null }>(`/api/gov/zone/${oktmo}?${segParams(segment)}`),
+  govExpiring: (months = 6) => get<{ total: number; sum: number; items: GovContract[] }>(`/api/gov/expiring?months=${months}&limit=30`),
+  govInstitution: (inn: string) => get<GovRow & Record<string, any> & { contracts: GovContract[] }>(`/api/gov/institutions/${inn}`),
+  govExportCsvUrl: (segment: string[], oktmo?: string) => {
+    const p = segParams(segment);
+    if (oktmo) p.append('oktmo', oktmo);
+    return `/api/gov/export.csv?${p}`;
+  },
 };

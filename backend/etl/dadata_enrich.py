@@ -1,4 +1,18 @@
-'Обогащение по ИНН через DaData (бесплатные методы подписки «Подсказки»).'
+"""Обогащение по ИНН через DaData (бесплатные методы подписки «Подсказки»).
+
+Используем только два метода, оба входят в бесплатный тариф (10 000 запросов в день):
+    findById/party   — организация или ИП по ИНН: статус, КПП, адрес из ЕГРЮЛ, головная и филиалы (один запрос);
+    suggest/address  — адрес → координаты дома, код ФИАС, ОКТМО (только для юрлиц: адрес ИП не публикуется).
+Платные методы («Стандартизация», «Компания по емейлу» и т. п.) не вызываются.
+
+Каждый ответ сохраняется в data/seed/dadata/{party,address}/ — повторный запуск лимит не тратит.
+
+Запуск из корня репо:
+    python -m backend.etl.dadata_enrich --set clients --set other_region_ul      # наши 759 + ЮЛ с ИНН другого региона
+    python -m backend.etl.dadata_enrich --set top_leads --budget 5500             # ~2,5 тыс. лучших лидов по разным метрикам
+    python -m backend.etl.dadata_enrich --inn 0265052371 --inn 7707049388       # точечно
+Результат: data/seed/dadata/enriched_<регион>.parquet (+ .csv, + .meta.json).
+"""
 import argparse
 import hashlib
 import json
@@ -19,10 +33,12 @@ API = "https://suggestions.dadata.ru/suggestions/api/4_1/rs"
 STATUS_RU = {"ACTIVE": "действует", "LIQUIDATING": "ликвидируется", "LIQUIDATED": "ликвидирована",
              "BANKRUPT": "банкротство", "REORGANIZING": "реорганизация"}
 
+
 def load_key() -> str:
     env = dict(l.split("=", 1) for l in (ROOT / ".env").read_text(encoding="utf-8").splitlines()
                if "=" in l and not l.startswith("#"))
     return env["DADATA_API_KEY"].strip()
+
 
 class DaData:
     def __init__(self, key: str, budget: int, rps: float = 8.0):
@@ -46,6 +62,12 @@ class DaData:
                 if e.code == 403:
                     raise RuntimeError("403: дневной лимит DaData исчерпан или ключ не принят") from e
                 raise
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+                # Сеть до DaData иногда рвётся (таймаут TLS/чтения) — повторяем, а не роняем весь прогон
+                if attempt < 3:
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+                raise RuntimeError(f"сеть: {e}") from e
 
     def cached(self, kind: str, key: str, method: str, payload: dict) -> dict:
         path = CACHE / kind / f"{key}.json"
@@ -57,33 +79,40 @@ class DaData:
                                    ensure_ascii=False), encoding="utf-8")
         return {"requested_at": "", "response": data}
 
-def party(dd: DaData, inn: str):
 
+def party(dd: DaData, inn: str):
+    """Головная запись + филиалы по ИНН (один запрос)."""
     sug = dd.cached("party", inn, "findById/party", {"query": inn, "count": 20})["response"].get("suggestions", [])
     main = next((s for s in sug if s["data"].get("branch_type") != "BRANCH"), sug[0] if sug else None)
     branches = [s for s in sug if s["data"].get("branch_type") == "BRANCH"]
     return main, branches
 
+
+# Точность координат DaData (qc_geo)
 QC_GEO = {0: "дом", 1: "ближайший дом", 2: "улица", 3: "населённый пункт", 4: "город", 5: "не определена"}
-_HOUSE = re.compile(r"\b(?:д|дом|влд|зд)(?:\.|\s)\s*\d[\w/\-]*", re.I)
+_HOUSE = re.compile(r"\b(?:д|дом|влд|зд)(?:\.|\s)\s*\d[\w/\-]*", re.I)  # «д 25А», «Д. 9/1»; не «ДОНУ»
+
 
 def clean_address(address: str) -> str:
-
+    """Адрес ЕГРЮЛ → строка до номера дома: без индекса, «Г.О. ГОРОД …», офисов, литер, помещений."""
     s = re.sub(r"^\s*\d{6},\s*", "", address)
     s = re.sub(r"(?i)\bг\.?\s?о\.?\s+(?:город\s+)?[^,]+,\s*", "", s)
     m = _HOUSE.search(s)
     return s[: m.end()] if m else s
+
 
 def _suggest(dd: DaData, address: str):
     key = hashlib.md5(address.encode("utf-8")).hexdigest()
     sug = dd.cached("address", key, "suggest/address", {"query": address, "count": 1})["response"].get("suggestions", [])
     return sug[0]["data"] if sug else None
 
+
 def _qc(g):
     return int(g["qc_geo"]) if g and g.get("qc_geo") not in (None, "") else 9
 
-def geocode(dd: DaData, address: str):
 
+def geocode(dd: DaData, address: str):
+    """Сначала полный адрес ЕГРЮЛ; если точнее дома не вышло — адрес, очищенный до номера дома. Берём лучший."""
     best = _suggest(dd, address)
     cleaned = clean_address(address)
     if _qc(best) > 1 and cleaned != address:
@@ -91,6 +120,7 @@ def geocode(dd: DaData, address: str):
         if _qc(alt) < _qc(best):
             best = alt
     return best
+
 
 def row_for(dd: DaData, inn: str, region: str) -> dict:
     main, branches = party(dd, inn)
@@ -119,7 +149,7 @@ def row_for(dd: DaData, inn: str, region: str) -> dict:
         "legal_region": adata.get("region_with_type"),
         "legal_city": adata.get("city_with_type") or adata.get("settlement_with_type"),
     })
-
+    # Задача «*»: сравниваем регион по ИНН, по КПП (текущая налоговая) и по адресу
     inn_reg, kpp_reg = inn[:2], kpp[:2] if kpp else None
     signals = []
     if inn_reg != region:
@@ -130,6 +160,7 @@ def row_for(dd: DaData, inn: str, region: str) -> dict:
         signals.append(f"филиалов в регионе: {row['branches_in_region']}")
     row["reloc_signals"] = "; ".join(signals) or None
 
+    # Координаты дома — только для юрлиц с адресом ЕГРЮЛ
     if row["dd_type"] == "ЮЛ" and addr.get("value"):
         g = geocode(dd, addr["value"])
         if g:
@@ -142,8 +173,13 @@ def row_for(dd: DaData, inn: str, region: str) -> dict:
                         "geo_source": "DaData suggest/address"})
     return row
 
-def select_top_leads(region: str) -> dict[str, str]:
 
+def select_top_leads(region: str) -> dict[str, str]:
+    """Юрлица-лиды без DaData, отобранные по нескольким метрикам — чтобы точки были и ценными, и по всей области.
+
+    Квоты: топ по баллу, по доходу, по росту (при доходе ≥ 10 млн ₽), лучшие в каждом белом пятне
+    и лучшие в каждом муниципалитете. Причина отбора сохраняется в enrich_reason.
+    """
     s = pd.read_parquet(RADAR / f"scored_{region}.parquet",
                         columns=["inn", "kind", "is_rtk_client", "lead_score", "income_2025", "income_growth_pct",
                                  "oktmo", "flag_zero_income"])
@@ -165,6 +201,7 @@ def select_top_leads(region: str) -> dict[str, str]:
     for o, g in pool.groupby("oktmo"):
         take(g.sort_values("lead_score", ascending=False), 12, "лучшие в муниципалитете")
     return picks
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -226,6 +263,7 @@ def main():
     print(json.dumps(meta, ensure_ascii=False, indent=2))
     if a.inn:
         print(out.T.to_string())
+
 
 if __name__ == "__main__":
     main()

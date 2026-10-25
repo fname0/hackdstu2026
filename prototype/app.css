@@ -4,7 +4,8 @@ body { background: var(--rt-bg); }
 .meta { margin: 4px 0 0; color: var(--rt-text-secondary); font-size: var(--rt-fs-small); line-height: var(--rt-lh-small); }
 .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-.header { position: sticky; top: 0; z-index: 1100;  background: var(--rt-bg); border-bottom: 1px solid var(--rt-border-strong); }
+/* Шапка */
+.header { position: sticky; top: 0; z-index: 1100; /* выше контролов Leaflet (1000) */ background: var(--rt-bg); border-bottom: 1px solid var(--rt-border-strong); }
 .header__top { display: flex; align-items: center; gap: 16px; height: var(--rt-header-h); }
 .header__logo img { display: block; }
 .header__product { padding-left: 16px; border-left: 1px solid var(--rt-border-strong); color: var(--rt-text-secondary); font-size: var(--rt-fs-small); }
@@ -15,9 +16,11 @@ body { background: var(--rt-bg); }
 .tabs .rt-tab { text-decoration: none; white-space: nowrap; padding: 12px 0 10px; font-size: var(--rt-fs-small); font-weight: var(--rt-fw-medium); }
 .tabs .rt-tab:hover { color: var(--rt-text); }
 
+/* Заголовок страницы */
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 32px 0 24px; }
 .page-head h1 { font-size: var(--rt-fs-h2); line-height: var(--rt-lh-h2); }
 
+/* Радар */
 .radar { display: grid; grid-template-columns: 288px 1fr; gap: 24px; align-items: start; padding-bottom: 48px; }
 .filters { min-width: 0; position: sticky; top: calc(var(--rt-header-h) + 64px); display: flex; flex-direction: column; gap: 20px; }
 .filters__title { font-size: var(--rt-fs-caption); line-height: var(--rt-lh-caption); color: var(--rt-text-muted); text-transform: none; margin-bottom: 8px; }
@@ -61,14 +64,16 @@ body { background: var(--rt-bg); }
 .map-reset-btn { background: rgba(255, 255, 255, .96); }
 .map-legend { position: absolute; left: 16px; bottom: 16px; z-index: 500; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 6px 12px; border-radius: var(--rt-radius-xs); background: rgba(255,255,255,.94); box-shadow: var(--rt-shadow-sm); font-size: var(--rt-fs-caption); color: var(--rt-text-secondary); }
 .leaflet-container { font-family: var(--rt-font); background: var(--rt-surface); }
-
+/* Цветная OSM-подложка спорит с данными: обесцвечиваем, данные остаются единственным цветом на карте */
 .leaflet-tile-pane { filter: grayscale(1) brightness(1.06) contrast(.88); }
 .leaflet-tooltip { border: 0; border-radius: var(--rt-radius-xs); box-shadow: var(--rt-shadow-md); font-size: var(--rt-fs-small); padding: 8px 12px; }
 
+/* Субтабы в карточке таблицы */
 .subtabs { display: flex; gap: 24px; }
 .subtabs .rt-tab { border-top: 0; border-left: 0; border-right: 0; background: none; font: inherit; font-size: var(--rt-fs-small); font-weight: var(--rt-fw-medium); cursor: pointer; padding: 12px 0 10px; }
 .tab-count { display: inline-block; padding: 1px 6px; border-radius: var(--rt-radius-xs); background: var(--rt-surface); color: var(--rt-text-secondary); font-size: var(--rt-fs-caption); font-variant-numeric: tabular-nums; margin-left: 4px; }
 
+/* Таблицы */
 .table-card { border: 1px solid var(--rt-border-strong); border-radius: var(--rt-radius-md); overflow: hidden; }
 .table-card__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 20px 0; border-bottom: 1px solid var(--rt-border-strong); }
 .table-card__head h2 { font-size: 18px; line-height: 24px; padding: 12px 0; }
@@ -81,6 +86,7 @@ body { background: var(--rt-bg); }
 .table tbody tr.is-clickable { cursor: pointer; }
 .table .sub { display: block; color: var(--rt-text-muted); font-size: var(--rt-fs-caption); line-height: var(--rt-lh-caption); margin-top: 2px; }
 
+/* Двойная шкала: Наши (#7700FF) vs Не наши (#FF4F12) */
 .split-cell { min-width: 170px; }
 .split-nums { display: flex; justify-content: space-between; font-size: var(--rt-fs-caption); font-variant-numeric: tabular-nums; margin-bottom: 4px; }
 .split-nums__our { color: var(--rt-purple); font-weight: var(--rt-fw-medium); }
@@ -102,10 +108,12 @@ body { background: var(--rt-bg); }
 .project .badge { margin: 4px 0 0; }
 .empty { padding: 32px 20px; margin: 0; text-align: center; color: var(--rt-text-secondary); font-size: var(--rt-fs-small); }
 
+/* Таймлайн проекта */
 .timeline { position: relative; width: 140px; height: 6px; margin-top: 7px; border-radius: 3px; background: var(--rt-surface); }
 .timeline i { position: absolute; top: 0; height: 100%; border-radius: 3px; background: var(--rt-purple); }
 .timeline b { position: absolute; top: -3px; width: 2px; height: 12px; background: var(--rt-orange); }
 
+/* Сводные плитки (KPI) */
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin-bottom: 24px; background: var(--rt-border-strong); border: 1px solid var(--rt-border-strong); border-radius: var(--rt-radius-md); overflow: hidden; }
 .stat { background: var(--rt-bg); padding: 16px 20px; }
 .stat__value { font-size: var(--rt-fs-h3); line-height: var(--rt-lh-h3); font-weight: var(--rt-fw-medium); font-variant-numeric: tabular-nums; }
@@ -114,6 +122,7 @@ body { background: var(--rt-bg); }
 .stat__label { color: var(--rt-text-secondary); font-size: var(--rt-fs-caption); line-height: var(--rt-lh-caption); margin-top: 4px; }
 #view-invest .table-card { margin-bottom: 48px; }
 
+/* Калькулятор */
 .calc { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; padding-bottom: 48px; }
 .qty { width: 64px; height: 32px; padding: 0 8px; border: 1px solid var(--rt-border-strong); border-radius: var(--rt-radius-xs); font: inherit; text-align: right; }
 .qty:focus { outline: none; border-color: var(--rt-purple); }
@@ -133,7 +142,7 @@ body { background: var(--rt-bg); }
 :focus-visible { outline: 2px solid var(--rt-purple); outline-offset: 2px; }
 
 @media (max-width: 1023px) {
-  
+  /* minmax(0,1fr): иначе nowrap-лента чипов распирает колонку до своей полной ширины */
   .radar, .calc { grid-template-columns: minmax(0, 1fr); }
   .filters, .summary { position: static; }
   .stats { grid-template-columns: repeat(2, 1fr); }

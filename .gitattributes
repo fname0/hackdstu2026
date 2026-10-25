@@ -1,0 +1,4 @@
+
+# Батники Windows — только с CRLF
+*.bat text eol=crlf
+*.sh text eol=lf

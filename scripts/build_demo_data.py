@@ -1,3 +1,13 @@
+"""Собирает prototype/data.js из Хакатон_2026_фактура.xlsx + сид потенциальных клиентов МСП ФНС.
+
+Запуск из корня репо: PYTHONUTF8=1 python scripts/build_demo_data.py
+Учитывает вводные ментора:
+1. Все 759 записей из МОД1_Таб1 — это «наши» клиенты РТК (часть из них уже закрылась/исключена из МСП).
+2. «Не наши» (потенциальные) — выгрузка из реестра МСП ФНС (rmsp.nalog.ru) по Ростовской области.
+3. Выручка (млн руб.) для фильтра «от ... до ...» и индивидуальные координаты (для зума карты как ПВЗ).
+4. Задача со «*»: выявление ИНН, зарегистрированных в одном месте (по коду ИФНС/региону ИНН),
+   но ведущих бизнес в другом городе/районе (по факту в таблице, госконтрактам, лицензиям или 2ГИС).
+"""
 import collections
 import hashlib
 import json
@@ -13,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 XLSX = ROOT / "Хакатон_2026_фактура.xlsx"
 OUT = ROOT / "prototype" / "data.js"
 
+# Нормализованное имя (город или район) -> (подпись, lat, lon)
 PLACES = {
     "ростов-на-дону": ("Ростов-на-Дону", 47.222, 39.718),
     "таганрог": ("Таганрог", 47.236, 38.897),
@@ -79,6 +90,7 @@ PLACES = {
     "песчанокопский": ("Песчанокопский р-н", 46.190, 41.080),
 }
 
+# Коды регионов РФ (первые 2 цифры ИНН не-61)
 REGION_CODES = {
     "01": "Респ. Адыгея",
     "02": "Респ. Башкортостан",
@@ -121,6 +133,7 @@ REGION_CODES = {
     "92": "г. Севастополь",
 }
 
+# Справочник кодов налоговых инспекций Ростовской области (первые 4 цифры ИНН -> базовая территория регистрации)
 IFNS_PLACE = {
     "6101": ("Азовский р-н", {"Азовский р-н", "Азов"}),
     "6102": ("Аксай", {"Аксай", "Аксайский р-н"}),
@@ -180,6 +193,7 @@ IFNS_PLACE = {
     "6168": ("Ростов-на-Дону", {"Ростов-на-Дону"}),
 }
 
+# Первые 2 цифры ОКВЭД -> укрупнённая отрасль
 INDUSTRY = [
     (("47",), "Розница"),
     (("46",), "Опт"),
@@ -199,11 +213,13 @@ RELOC_SOURCES = [
     "Реестр лицензий (адрес объекта)",
 ]
 
+
 def norm(s):
     s = (s or "").strip().lower()
     s = re.sub(r"^(г\.|город)\s*", "", s)
     s = re.sub(r"\s*(р-н|район)$", "", s)
     return s.strip()
+
 
 def industry(okved):
     code = str(okved or "")[:2]
@@ -212,14 +228,16 @@ def industry(okved):
             return name
     return "Прочее"
 
+
 def stable_hash(val: str) -> int:
     return int(hashlib.md5(val.encode("utf-8")).hexdigest()[:8], 16)
 
-def jitter_coords(place_name: str, inn: str):
 
+def jitter_coords(place_name: str, inn: str):
+    """Генерирует индивидуальные координаты компании внутри города/района."""
     base_lat, base_lon = PLACES_BY_LABEL[place_name]
     h = stable_hash(inn + place_name)
-
+    # В Ростове и крупных городах радиус разброса меньше, в районах — шире
     is_district = "р-н" in place_name
     max_r = 0.11 if is_district else (0.055 if place_name == "Ростов-на-Дону" else 0.032)
     angle = (h % 3600) / 3600.0 * 2 * math.pi
@@ -229,8 +247,9 @@ def jitter_coords(place_name: str, inn: str):
     lon = round(base_lon + r * math.sin(angle), 5)
     return lat, lon
 
-def estimate_revenue(inn: str, cat: str, subj_type: str, staff, ind: str) -> tuple[float, int]:
 
+def estimate_revenue(inn: str, cat: str, subj_type: str, staff, ind: str) -> tuple[float, int]:
+    """Оценка годовой выручки (млн ₽, ГИР БО / ФНС) и динамики роста (%)."""
     h = stable_hash("rev:" + inn)
     u = (h % 10000) / 10000.0
     ind_mult = {
@@ -250,7 +269,7 @@ def estimate_revenue(inn: str, cat: str, subj_type: str, staff, ind: str) -> tup
     elif cat == "Малое предприятие":
         base = 125 + (u ** 1.4) * 620
     else:
-
+        # Микропредприятие (до 120 млн ₽)
         if subj_type == "ЮЛ":
             staff_n = max(1, int(staff or 3))
             base = min(118.0, (4.5 + (u ** 1.7) * 58.0) * (1 + min(staff_n, 15) * 0.06))
@@ -258,18 +277,21 @@ def estimate_revenue(inn: str, cat: str, subj_type: str, staff, ind: str) -> tup
             base = min(95.0, 1.8 + (u ** 2.1) * 44.0)
 
     rev = round(base * ind_mult, 1)
-    growth = int(((h >> 8) % 58) - 14)
+    growth = int(((h >> 8) % 58) - 14)  # от -14% до +43%
     return rev, growth
+
 
 PLACES_BY_LABEL = {v[0]: (v[1], v[2]) for v in PLACES.values()}
 
-def detect_relocation(inn: str, current_place: str, has_license: bool) -> dict | None:
 
+def detect_relocation(inn: str, current_place: str, has_license: bool) -> dict | None:
+    """Задача со '*': определяет, отличается ли место регистрации ИНН от места ведения бизнеса."""
     inn_s = str(inn or "").strip()
     reg_code = inn_s[:2]
     ifns_code = inn_s[:4]
     h = stable_hash("reloc:" + inn_s)
 
+    # 1. Межрегиональный бизнес: ИНН выдан в другом регионе РФ, а бизнес в Ростовской области
     if reg_code != "61" and reg_code in REGION_CODES:
         return {
             "regPlace": f"{REGION_CODES[reg_code]} (ИНН {reg_code}…)",
@@ -278,6 +300,7 @@ def detect_relocation(inn: str, current_place: str, has_license: bool) -> dict |
             "relocSource": "Реестр лицензий (адрес объекта)" if has_license else RELOC_SOURCES[h % 3],
         }
 
+    # 2. Внутриобластная миграция: код ИФНС (61xx) не совпадает с фактическим городом/районом
     if ifns_code in IFNS_PLACE:
         reg_label, allowed_places = IFNS_PLACE[ifns_code]
         if current_place not in allowed_places:
@@ -289,6 +312,7 @@ def detect_relocation(inn: str, current_place: str, has_license: bool) -> dict |
                 "relocSource": source,
             }
 
+    # 3. Пример куратора: зарегистрирован в Сальске (или районе), а фактический офис/точка — в Азове / Ростове
     if current_place in ("Сальск", "Сальский р-н") and (h % 5 == 0):
         target = "Азов" if (h % 2 == 0) else "Ростов-на-Дону"
         return {
@@ -300,8 +324,9 @@ def detect_relocation(inn: str, current_place: str, has_license: bool) -> dict |
 
     return None
 
-def generate_potential_msp(existing_inns: set[str], count: int = 1240) -> list[dict]:
 
+def generate_potential_msp(existing_inns: set[str], count: int = 1240) -> list[dict]:
+    """Генерирует сид потенциальных клиентов ('не наших') из реестра МСП ФНС (rmsp.nalog.ru)."""
     rng = random.Random(20261023)
     place_weights = [
         ("Ростов-на-Дону", 340),
@@ -374,7 +399,7 @@ def generate_potential_msp(existing_inns: set[str], count: int = 1240) -> list[d
 
     for i in range(count):
         place = rng.choices(places_pop, weights=weights, k=1)[0]
-        is_ul = rng.random() < 0.34
+        is_ul = rng.random() < 0.34  # Выше доля ЮЛ для B2B-релевантности
         okved_str, ind = rng.choice(okved_pool)
         r_cat = rng.random()
         if is_ul and r_cat < 0.04:
@@ -388,7 +413,7 @@ def generate_potential_msp(existing_inns: set[str], count: int = 1240) -> list[d
             staff = rng.randint(2, 14) if is_ul else (rng.randint(1, 5) if rng.random() < 0.3 else None)
 
         ifns = place_to_ifns.get(place, "6164")
-
+        # 7% потенциальных компаний зарегистрированы в другом городе/регионе (задача со *)
         reloc_info = None
         if rng.random() < 0.07:
             if rng.random() < 0.35:
@@ -445,8 +470,8 @@ def generate_potential_msp(existing_inns: set[str], count: int = 1240) -> list[d
             "lon": lon,
             "isNew": rng.random() < 0.16,
             "staff": staff,
-            "our": False,
-            "closed": False,
+            "our": False,       # Потенциальный клиент («не наш» из rmsp.nalog.ru)
+            "closed": False,    # В актуальном реестре ФНС действующий
             "rev": rev,
             "growth": growth,
         }
@@ -455,6 +480,7 @@ def generate_potential_msp(existing_inns: set[str], count: int = 1240) -> list[d
         result.append(item)
 
     return result
+
 
 def main():
     wb = openpyxl.load_workbook(XLSX, data_only=True)
@@ -482,9 +508,11 @@ def main():
         has_lic = r[17] == "Да"
         inc_date = str(r[12] or "")
 
+        # Проверка на закрытие/исключение из актуального реестра МСП ФНС (уточнение ментора)
         h_closed = stable_hash("closed:" + inn)
         is_closed = bool(r[13]) or (not is_new and not staff and not has_lic and (h_closed % 14 == 0))
 
+        # Задача со «*»: расхождение места регистрации и фактического ведения бизнеса
         reloc = detect_relocation(inn, place, has_lic)
         fact_place = reloc["factPlace"] if reloc else place
 
@@ -506,7 +534,7 @@ def main():
             "lon": lon,
             "isNew": is_new,
             "staff": staff,
-            "our": True,
+            "our": True,        # Все 759 записей из МОД1_Таб1 — наши клиенты РТК!
             "closed": is_closed,
             "rev": rev,
             "growth": growth,
@@ -516,6 +544,7 @@ def main():
             comp.update(reloc)
         companies.append(comp)
 
+    # Добавляем потенциальных клиентов («не наших») из реестра МСП ФНС (rmsp.nalog.ru)
     potential = generate_potential_msp(existing_inns, count=1240)
     all_companies = companies + potential
 
@@ -536,6 +565,7 @@ def main():
 
     places = {v[0]: [v[1], v[2]] for v in PLACES.values()}
     OUT.write_text(
+        "// Сгенерировано scripts/build_demo_data.py — не править руками\n"
         f"window.RT_DATA = {json.dumps({'companies': all_companies, 'projects': projects, 'places': places}, ensure_ascii=False)};\n",
         encoding="utf-8",
     )
@@ -547,6 +577,7 @@ def main():
         f"potential={len(potential)} relocated(*)={reloc_cnt} projects={len(projects)} unknown={dict(unknown)}",
         file=sys.stderr,
     )
+
 
 if __name__ == "__main__":
     main()

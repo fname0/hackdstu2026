@@ -1,7 +1,19 @@
+"""Проверка выгрузок радара: CSV и CRM отдают ровно то, что показывает список компаний, в корректном формате.
+
+Запуск (API должен работать на :8000):
+    python -m backend.tests.check_exports            # с машины разработки
+    docker compose exec api python -m backend.tests.check_exports --base http://localhost:8000
+
+API закрыт входом (2FA): передайте cookie сеанса — значение rt_session из браузера (DevTools → Application → Cookies):
+    RT_SESSION=<значение> python -m backend.tests.check_exports
+
+Сценарии: весь район, узкий фильтр (отрасль + доход + только потенциальные), поиск по ИНН.
+"""
 import argparse
 import csv
 import io
 import json
+import os
 import sys
 import urllib.parse
 import urllib.request
@@ -13,9 +25,13 @@ CASES = [
     ("поиск по ИНН", {"client": "all", "q": "6103006206"}),
 ]
 
+
 def get(base, path, params):
-    with urllib.request.urlopen(f"{base}{path}?{urllib.parse.urlencode(params)}", timeout=60) as r:
+    req = urllib.request.Request(f"{base}{path}?{urllib.parse.urlencode(params)}",
+                                 headers={"Cookie": f"rt_session={os.environ.get('RT_SESSION', '')}"})
+    with urllib.request.urlopen(req, timeout=60) as r:
         return r.read()
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -65,6 +81,7 @@ def main():
 
     print(f"\n{'Все проверки пройдены' if not failed else f'Ошибок: {failed}'}")
     sys.exit(1 if failed else 0)
+
 
 if __name__ == "__main__":
     main()

@@ -2,6 +2,7 @@ import { DEFAULT_WEIGHTS, FACTOR_LABELS, type Weights } from './potential';
 
 const KEYS = Object.keys(FACTOR_LABELS) as (keyof Weights)[];
 
+/** Ползунки весов потенциала: карта, белые пятна и панель района пересчитываются сразу. */
 export default function WeightsPanel({ w, set }: { w: Weights; set: (w: Weights) => void }) {
   const sum = KEYS.reduce((a, k) => a + w[k], 0) || 1;
   const isDefault = KEYS.every(k => w[k] === DEFAULT_WEIGHTS[k]);
@@ -20,7 +21,6 @@ export default function WeightsPanel({ w, set }: { w: Weights; set: (w: Weights)
           <span className="weight__value num">{Math.round((w[k] / sum) * 100)}%</span>
         </label>
       ))}
-      <p className="meta">Доли нормируются к 100%. Потенциал = Σ доля × место района по фактору.</p>
     </section>
   );
 }

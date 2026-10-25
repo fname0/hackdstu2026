@@ -1,3 +1,13 @@
+"""Загрузка подготовленных данных радара (data/seed) в PostgreSQL/PostGIS.
+
+Таблицы пересоздаются целиком — загрузка идемпотентна:
+    zones      — муниципалитеты: границы (MultiPolygon) + метрики и потенциал (zones_<регион>.parquet)
+    companies  — все субъекты МСП региона с баллами, финансами и данными DaData (scored_<регион>.parquet)
+    clients    — клиенты РТК из исходной таблицы со статусом (clients_<регион>.parquet)
+    meta       — источники и даты выпусков
+
+Запуск: docker compose run --rm api python -m backend.load.load_radar
+"""
 import io
 import json
 import os
@@ -27,9 +37,11 @@ COMPANY_COLUMNS = [
     "rtk_in_same_building", "mass_address", "source",
 ]
 
+
 def engine():
     url = os.environ.get("DATABASE_URL", "postgresql+psycopg://rt:rt_local_dev@localhost:5432/rt")
     return create_engine(url)
+
 
 def load_zones(con):
     z = pd.read_parquet(SEED / "radar" / f"zones_{REGION}.parquet")
@@ -46,18 +58,19 @@ def load_zones(con):
     con.execute(text("CREATE INDEX zones_geom_idx ON zones USING gist (geom)"))
     return len(z)
 
+
 def load_companies(con):
     s = pd.read_parquet(SEED / "radar" / f"scored_{REGION}.parquet")
     cols = [c for c in COMPANY_COLUMNS if c in s.columns]
     s = s[cols].copy()
-
+    # У 220 юрлиц в реестре МСП пустое краткое наименование — показываем полное
     s["name_short"] = s.name_short.where(s.name_short.fillna("").str.strip() != "", s.name)
-
+    # Структуру таблицы создаёт pandas (по пустому кадру), сами 188 тыс. строк заливаются COPY — в разы быстрее INSERT
     s.head(0).to_sql("companies", con, if_exists="replace", index=False)
     buf = io.StringIO()
     s.to_csv(buf, index=False, header=False)
     buf.seek(0)
-    raw = con.connection.driver_connection
+    raw = con.connection.driver_connection  # psycopg 3
     with raw.cursor() as cur, cur.copy(f"COPY companies ({', '.join(cols)}) FROM STDIN WITH (FORMAT csv)") as cp:
         while chunk := buf.read(1 << 20):
             cp.write(chunk)
@@ -73,11 +86,13 @@ def load_companies(con):
     con.execute(text("CREATE INDEX companies_name_trgm_idx ON companies USING gin (lower(name) gin_trgm_ops)"))
     return len(s), int(s["geo_lat"].notna().sum()) if "geo_lat" in cols else 0
 
+
 def load_clients(con):
     c = pd.read_parquet(SEED / "radar" / f"clients_{REGION}.parquet")
     c.to_sql("clients", con, if_exists="replace", index=False)
     con.execute(text("ALTER TABLE clients ADD PRIMARY KEY (inn)"))
     return len(c)
+
 
 def load_meta(con):
     rows = []
@@ -85,6 +100,7 @@ def load_meta(con):
         rows.append({"name": p.stem.replace(".meta", ""), "data": p.read_text(encoding="utf-8")})
     pd.DataFrame(rows).to_sql("meta", con, if_exists="replace", index=False)
     return len(rows)
+
 
 def main():
     for stream in (sys.stdout, sys.stderr):
@@ -99,6 +115,7 @@ def main():
         print("clients", load_clients(con))
         print("meta", load_meta(con))
     print(f"готово за {time.time() - t0:.0f} с")
+
 
 if __name__ == "__main__":
     main()

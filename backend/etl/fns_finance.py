@@ -1,4 +1,16 @@
-'Шаги 2–3 ETL: доходы, численность и спецрежимы ФНС по ИНН субъектов региона.'
+"""Шаги 2–3 ETL: доходы, численность и спецрежимы ФНС по ИНН субъектов региона.
+
+Наборы ФНС (вся РФ, без кода региона, ключ — ИНН):
+    revexp  — доходы и расходы по бухотчётности (7707329152-revexp), два выпуска = два отчётных года;
+    sshr    — среднесписочная численность (7707329152-sshr2019);
+    snr     — специальные налоговые режимы (7707329152-snr).
+Из каждого оставляем только ИНН из таблицы реестра МСП региона (шаг 1).
+
+Запуск из корня репо:
+    python -m backend.etl.fns_finance --msp data/seed/fns/msp_61_2026-10-10.parquet
+
+Результат: data/seed/fns/finance_<регион>.parquet (+ .csv, + .meta.json).
+"""
 import argparse
 import json
 import sys
@@ -17,13 +29,16 @@ OUT_DIR = ROOT / "data" / "seed" / "fns"
 
 _INNS: set[str] = set()
 
+
 def _init(inns):
     global _INNS
     _INNS = inns
 
-def _year(state_date):
 
+def _year(state_date):
+    """ДатаСост «31.12.2025» → отчётный год 2025."""
     return int(state_date[-4:]) if state_date else None
+
 
 def _parse(args):
     kind, zip_path, name = args
@@ -52,6 +67,7 @@ def _parse(args):
         rows.append(row)
     return rows
 
+
 def _read(kind, zip_path, inns, workers):
     with zipfile.ZipFile(zip_path) as z:
         names = [n for n in z.namelist() if n.lower().endswith(".xml")]
@@ -63,6 +79,7 @@ def _read(kind, zip_path, inns, workers):
                 print(f"  {zip_path.name}: {i}/{len(names)} файлов · найдено {len(rows):,} · {time.time() - t0:.0f} с",
                       file=sys.stderr, flush=True)
     return pd.DataFrame(rows)
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -77,6 +94,7 @@ def main():
     inns = set(msp["inn"])
     t0 = time.time()
 
+    # Доходы: каждый выпуск revexp — отдельный отчётный год
     years = {}
     for zp in sorted(RAW.glob("revexp_*.zip")):
         df = _read("revexp", zp, inns, a.workers)
@@ -91,21 +109,23 @@ def main():
     if len(ys) >= 2:
         cur, prev = ys[-1], ys[-2]
         base = fin[f"income_{prev}"]
-
+        # Рост считаем только при осмысленной базе: доход прошлого года > 0
         fin["income_growth_pct"] = ((fin[f"income_{cur}"] - base) / base * 100).where(base > 0).round(1)
 
+    # Численность
     sshr_zip = next(RAW.glob("sshr_*.zip"))
     sshr = _read("sshr", sshr_zip, inns, a.workers).drop_duplicates("inn").set_index("inn")
     staff_year = _year(sshr["state_date"].iloc[0]) if len(sshr) else None
     fin[f"staff_{staff_year}"] = sshr["staff"]
 
+    # Спецрежимы
     snr_zip = next(RAW.glob("snr_*.zip"))
     snr = _read("snr", snr_zip, inns, a.workers).drop_duplicates("inn").set_index("inn")
     regime_cols = {"ПризнУСН": "УСН", "ПризнЕСХН": "ЕСХН", "ПризнАУСН": "АУСН", "ПризнСРП": "СРП"}
 
     def regime(r):
         if r.name not in snr.index:
-            return None
+            return None  # нет в наборе: ОСНО или нет сведений
         s = snr.loc[r.name]
         names = [v for k, v in regime_cols.items() if bool(s.get(k))]
         return "+".join(names) if names else "нет спецрежима"
@@ -138,6 +158,7 @@ def main():
     }
     (OUT_DIR / f"{stem}.meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(meta, ensure_ascii=False, indent=2))
+
 
 if __name__ == "__main__":
     main()

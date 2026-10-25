@@ -69,18 +69,11 @@ echo [2/3] Устанавливаю зависимости Python...
 ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -r "backend\requirements.txt"
 if errorlevel 1 goto :fail
 
-echo [3/3] Проверяю зависимости сайта...
+echo [3/3] Обновляю зависимости сайта...
 pushd "frontend"
 if errorlevel 1 goto :fail
-if not exist "node_modules\.bin\vite.cmd" goto :install_frontend
-call "node_modules\.bin\vite.cmd" --version >nul 2>nul
-if not errorlevel 1 goto :frontend_ready
-:install_frontend
-if exist "package-lock.json" (
-  call npm.cmd ci --no-audit --no-fund
-) else (
-  call npm.cmd install --no-audit --no-fund
-)
+rem npm install сверяет существующие пакеты с package-lock.json после обновления проекта
+call npm.cmd install --no-audit --no-fund
 if errorlevel 1 (
   popd
   goto :fail
@@ -90,8 +83,19 @@ if errorlevel 1 (
   popd
   goto :fail
 )
-:frontend_ready
 popd
+
+echo Проверяю загрузку всех модулей API...
+".venv\Scripts\python.exe" -c "from backend.app.main import app; print('  API:', app.title)"
+if errorlevel 1 (
+  echo [!] Не удалось загрузить API. Подробности ошибки выше
+  goto :fail
+)
+
+rem В Docker этот режим включён в compose, на ноутбуке задаём такой же default
+rem Явное AUTH_DEV_MODE=0 в .env или окружении сохраняется
+for /f "delims=" %%A in ('.venv\Scripts\python.exe -c "import os; from backend.app import db; print(os.environ.get('AUTH_DEV_MODE') or '1')"') do set "AUTH_DEV_MODE=%%A"
+if "%AUTH_DEV_MODE%"=="1" echo Без настроенной почты код входа появится в окне API
 
 echo Проверяю подключение к базе...
 if not defined PGCONNECT_TIMEOUT set "PGCONNECT_TIMEOUT=10"

@@ -1,4 +1,14 @@
-'Шаг 1 ETL: Единый реестр МСП (ФНС, набор 7707329152-rsmp) → субъекты одного региона.'
+"""Шаг 1 ETL: Единый реестр МСП (ФНС, набор 7707329152-rsmp) → субъекты одного региона.
+
+Архив читается прямо из zip, без распаковки: внутри ~7,5 тыс. XML по ~3 МБ (≈22,7 ГБ на всю РФ).
+Файлы обрабатываются параллельно; файл без нужного кода региона отбрасывается без разбора XML.
+
+Запуск из корня репо:
+    python -m backend.etl.fns_msp data/raw/fns/rsmp_2026-10.zip --region 61
+    python -m backend.etl.fns_msp data/raw/fns/rsmp_2026-10.zip --region 61 --limit 50   # быстрая проверка
+
+Результат: data/seed/fns/msp_<регион>_<ГГГГ-ММ-ДД>.parquet (+ .csv для просмотра, + .meta.json).
+"""
 import argparse
 import json
 import sys
@@ -14,14 +24,16 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = ROOT / "data" / "seed" / "fns"
 
-KIND = {"1": "ЮЛ", "2": "ИП", "3": "ИП (КФХ)"}
+KIND = {"1": "ЮЛ", "2": "ИП", "3": "ИП (КФХ)"}  # 3 — глава крестьянского (фермерского) хозяйства
 CATEGORY = {"1": "микро", "2": "малое", "3": "среднее"}
 
-def _place(el):
 
+def _place(el):
+    """«Тип Наим» элемента адреса (Район, Город, НаселПункт) или пустая строка."""
     if el is None:
         return ""
     return " ".join(x for x in (el.get("Тип", "").strip(), el.get("Наим", "").strip()) if x)
+
 
 def _parse_doc(doc):
     ul, ip = doc.find("ОргВклМСП"), doc.find("ИПВклМСП")
@@ -65,8 +77,9 @@ def _parse_doc(doc):
         "has_products": doc.find("СвПрод") is not None,
     }
 
-def _parse_file(args):
 
+def _parse_file(args):
+    """Разбирает один XML из архива. Возвращает (записи региона, всего документов в файле, дата состояния)."""
     zip_path, name, region = args
     with zipfile.ZipFile(zip_path) as z:
         raw = z.read(name)
@@ -74,7 +87,7 @@ def _parse_file(args):
     root = ET.fromstring(raw)
     docs = root.findall("Документ")
     state_date = docs[0].get("ДатаСост") if docs else None
-    if marker not in raw:
+    if marker not in raw:  # в файле нет ни одного субъекта региона
         return [], len(docs), state_date
     rows = []
     for doc in docs:
@@ -85,6 +98,7 @@ def _parse_file(args):
         if row:
             rows.append(row)
     return rows, len(docs), state_date
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -141,6 +155,7 @@ def main():
     }
     (OUT_DIR / f"{stem}.meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(meta, ensure_ascii=False, indent=2))
+
 
 if __name__ == "__main__":
     main()

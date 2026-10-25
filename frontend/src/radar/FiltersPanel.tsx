@@ -47,10 +47,10 @@ export default function FiltersPanel({ f, set, reset, industries }: Props) {
       </div>
 
       <div className="field">
-        <span className="field__label">Доход за 2025, млн ₽ <em>только юрлица</em></span>
+        <span className="field__label">Доход за 2025, млн ₽</span>
         <div className="range">
           <input className="rt-input" inputMode="decimal" placeholder="от" value={f.incomeMin} onChange={e => set({ incomeMin: e.target.value })} />
-          <span>—</span>
+          <span>-</span>
           <input className="rt-input" inputMode="decimal" placeholder="до" value={f.incomeMax} onChange={e => set({ incomeMax: e.target.value })} />
         </div>
         <div className="chips">
@@ -59,27 +59,25 @@ export default function FiltersPanel({ f, set, reset, industries }: Props) {
               onClick={() => set({ incomeMin: p.min, incomeMax: p.max })}>{p.label}</button>
           ))}
         </div>
-        <label className="check">
-          <input type="checkbox" checked={f.includeNoIncome} onChange={e => set({ includeNoIncome: e.target.checked })} />
-          Показывать без данных о доходе (ИП, не сдавшие отчётность)
-        </label>
       </div>
 
       <label className="field">
-        <span className="field__label">Рост дохода за год, не ниже, %</span>
+        <span className="field__label">Рост дохода за год не ниже, %</span>
         <input className="rt-input" inputMode="decimal" placeholder="например, 10" value={f.growthMin} onChange={e => set({ growthMin: e.target.value })} />
       </label>
 
       <div className="field">
-        <span className="field__label">Отрасль</span>
-        <div className="chips chips--scroll">
-          {industries?.map(i => (
-            <button key={i.industry} className={`chip ${f.industry.includes(i.industry) ? 'is-active' : ''}`}
-              onClick={() => set({ industry: toggle(f.industry, i.industry) })}>
-              {i.industry} <span>{num(i.n)}</span>
-            </button>
-          ))}
-        </div>
+          <>
+            <span className="field__label">Компании реестра МСП · отрасль</span>
+            <div className="chips chips--scroll">
+              {industries?.map(i => (
+                <button key={i.industry} className={`chip ${f.industry.includes(i.industry) ? 'is-active' : ''}`}
+                  onClick={() => set({ industry: toggle(f.industry, i.industry) })}>
+                  {i.industry} <span>{num(i.n)}</span>
+                </button>
+              ))}
+            </div>
+          </>
       </div>
 
       <button className="link-btn" onClick={reset}>Сбросить фильтры</button>

@@ -1,7 +1,8 @@
 const nf = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 });
 
-export const num = (v: number | null | undefined) => (v == null ? '—' : nf.format(v));
+export const num = (v: number | null | undefined) => (v == null ? '-' : nf.format(v));
 
+/** Рубли → «1,2 млрд ₽» / «35,4 млн ₽» / «850 тыс. ₽». */
 export function money(v: number | null | undefined) {
   if (v == null) return 'нет данных';
   const a = Math.abs(v);
@@ -12,7 +13,7 @@ export function money(v: number | null | undefined) {
 }
 
 export const pct = (v: number | null | undefined, digits = 1) =>
-  v == null ? '—' : `${v > 0 ? '+' : ''}${v.toLocaleString('ru-RU', { maximumFractionDigits: digits })}%`;
+  v == null ? '-' : `${v > 0 ? '+' : ''}${v.toLocaleString('ru-RU', { maximumFractionDigits: digits })}%`;
 
 export function plural(n: number, one: string, few: string, many: string) {
   const m10 = n % 10, m100 = n % 100;

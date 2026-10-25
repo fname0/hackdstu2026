@@ -1,4 +1,24 @@
-'ETL инвестпроектов (модуль 2) → data/seed/invest/projects_<регион>.* (xlsx) или projects_don_<регион>.* (invest-don.ru)'
+"""ETL инвестпроектов (модуль 2) → data/seed/invest/projects_<регион>.* (xlsx) или projects_don_<регион>.* (invest-don.ru)
+
+Источники (--source):
+  xlsx       — лист МОД2 из Хакатон_2026_фактура.xlsx (63 проекта, данные организаторов);
+  invest-don — полный реестр портала invest-don.ru (~1500 проектов), сначала запустить backend.etl.invest_don.
+    Отличия: статус портала (завершён / приостановлен / перспективный) главнее стадии по годам, координаты — точка
+    с портала, годы и сумма могут быть пустыми (тогда стадия и потенциал не считаются, балл ниже).
+
+Шаги:
+  1) чистим тексты (переносы, двойные пробелы), делим ячейку с несколькими инициаторами;
+  2) ИНН инициатора: точное совпадение имени с реестром МСП (companies_<регион>), иначе DaData suggest/party
+     по названию с фильтром по региону; уверенность сопоставления сохраняется (match_score, match_method);
+  3) связь с радаром: наш клиент РТК / потенциальный из МСП / вне МСП (крупный); межрегиональный игрок — ИНН не <регион>;
+  4) координаты: адрес из текста проекта → DaData suggest/address, иначе центроид муниципалитета (location_precision);
+  5) стадия и «окно продаж» по годам начала и ввода относительно даты расчёта;
+  6) отрасль и потребности РТК правилами с цитатой (invest_classify.py), потенциал для РТК — оценка по нормативу доли
+     ИТ/слаботочки в капексе (помечена как оценка), балл «горячести» с разложением на факторы.
+
+Запуск: python -m backend.etl.invest [--source xlsx|invest-don] [--region 61] [--today 2026-10-24] [--offline]
+--offline: только кэш DaData (data/seed/dadata/{party_name,address}), без запросов.
+"""
 import argparse
 import difflib
 import hashlib
@@ -23,6 +43,7 @@ RADAR = ROOT / "data" / "seed" / "radar"
 OUT = ROOT / "data" / "seed" / "invest"
 REGION_NAME = {"61": "Ростовская обл"}
 
+# Лист называется «МОД"_Таб1» (опечатка организаторов), поэтому ищем его по колонкам, а не по имени
 COLS = {
     "№ п/п": "src_no", "Муниципальное образование": "mo_raw", "Куратор проекта": "curator",
     "Входит в перечень ключевых инвестиционных проектов": "is_key", "Инициатор инвестиционного проекта": "initiator_raw",
@@ -30,37 +51,74 @@ COLS = {
     "Ввод в эксплуатацию": "finish_year", "Всего (млн руб.)": "sum_mln", "Количество новых рабочих мест (мест)": "jobs",
 }
 
-IT_SHARE = {
-    "ТЭК и энергетика": 0.015, "Девелопмент и жильё": 0.015, "Логистика и склады": 0.03,
-    "АПК и пищевое производство": 0.01, "Промышленность": 0.02, "Здравоохранение": 0.04, "Спорт и туризм": 0.02,
-    "Торговля и общепит": 0.02, "Коммерческая недвижимость": 0.025, "Автосервис": 0.01, "Прочее": 0.01,
-    "ИТ и связь": 0.3, "Бытовые услуги": 0.015, "Инфраструктура и благоустройство": 0.02,
-}
+# Доля ИТ, связи, слаботочки и автоматики в капексе — пока единые 3% для всех проектов (решение команды 24.10:
+# отраслевые нормативы без источника было не объяснить). Допущение для демо, не данные.
+RTK_SHARE = 0.03
 
 _SPACE = re.compile(r"\s+")
-_SPLIT = re.compile(r",\s*(?=(?:ИП|ООО|АО|ПАО|ЗАО|Индивидуальный предприниматель)\b)")
+# Несколько инициаторов в одной ячейке: «ИП …, ИП …» и «Ткаченко Н.А., Ткаченко Р.В.»
+_SPLIT = re.compile(r",\s*(?=(?:ИП|ООО|АО|ПАО|ЗАО|Индивидуальный предприниматель)\b|[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.)")
 _LEGAL = re.compile(r"\b(?:ооо|оао|пао|зао|ао|ип|спк|кфх|гк|сз|общество с ограниченной ответственностью|"
                     r"индивидуальный предприниматель|(?:публичное |закрытое |открытое )?акционерное общество|"
-                    r"специализированный застройщик|филиал|федеральный девелопер)\b")
+                    r"специализированный застройщик|филиал|федеральный девелопер|"
+                    # «ИП глава к(ф)х Исаев…», «глава КФ», «физическое лицо» — служебные слова, не часть ФИО
+                    r"глава\s+к\s*ф?\s*х?|кх|физ\w*\.?\s+лиц\w*)\b")
 _PAREN = re.compile(r"\([^)]*\)?")
-
+# Порог похожести названий для DaData: 0.75 уже путает «Росхим» с «Росхимторг», 0.86 — ещё «Бок Дон» = «БОК-ДОН»
 MIN_MATCH = 0.8
 _ADDR = re.compile(r"(?:по адресу:?\s*|(?=\b(?:ул|пер|пр|мкр)\.\s)|(?=\b(?:с|х|сл)\.\s?[А-ЯЁ]))(.+)$")
+
 
 def clean(s) -> str:
     if s is None or (isinstance(s, float) and math.isnan(s)):
         return ""
     return _SPACE.sub(" ", str(s)).strip().strip(",").strip()
 
+
 def num(x) -> float | None:
     return None if x is None or pd.isna(x) else float(x)
 
-def name_key(s: str) -> str:
 
-    s = s.lower().replace("ё", "е")
+def name_key(s: str) -> str:
+    """«ООО "Мак-Лоджистик"» и «ООО "МАК-Лоджистик"» → «мак-лоджистик»; для сравнения названий."""
+    s = _PAREN.sub(" ", s.lower().replace("ё", "е"))  # пояснения в скобках: «(физические лица)», «(ГК DOGMA)»
     s = re.sub(r"[«»\"'“”„()]", " ", s)
     s = _LEGAL.sub(" ", s)
+    s = _LEGAL.sub(" ", _SPACE.sub(" ", s))  # второй проход: «ип, глава кфх» после первой чистки
     return _SPACE.sub(" ", s).strip(" .,-")
+
+
+_INITIALS = re.compile(r"^([а-я-]{2,})\s+([а-я])\.?\s*([а-я])?\.?$")
+_FIO = re.compile(r"^[а-я-]{2,}(?:\s+[а-я-]{2,}){2,3}$")
+
+
+def person_index(msp: pd.DataFrame) -> dict:
+    """ИП и главы КФХ реестра МСП: фамилия → [(ИНН, имя, ОКТМО, первая буква имени, первая буква отчества)]."""
+    idx: dict[str, list] = {}
+    for inn, name, key, oktmo in msp[msp.kind.str.startswith("ИП")][["inn", "name", "key", "oktmo"]].itertuples(index=False):
+        w = key.split()
+        if len(w) >= 2:
+            idx.setdefault(w[0], []).append((inn, name, oktmo, w[1][0], w[2][0] if len(w) > 2 else None))
+    return idx
+
+
+def match_initials(initiators: list[str], oktmo: str | None, persons: dict) -> tuple | None:
+    """«Кагиров Д.Л.» → единственный ИП с такой фамилией и инициалами в муниципалитете проекта.
+    Совпадение вероятное (тёзки в одном районе редки, но возможны) — помечаем это в match_method."""
+    if not oktmo:
+        return None
+    for ini in initiators:
+        m = _INITIALS.match(name_key(ini))
+        # «ООО "КХ Перетятько А.А."» — общество, а не ИП: ИНН однофамильца-ИП ему не подставляем
+        if not m or re.search(r"\b(?:ООО|ОАО|ПАО|ЗАО|АО)\b", ini):
+            continue
+        surname, i1, i2 = m.groups()
+        hits = [p for p in persons.get(surname, [])
+                if p[2] == oktmo and p[3] == i1 and (i2 is None or p[4] == i2)]
+        if len(hits) == 1:
+            return hits[0][0], hits[0][1], 0.9, "реестр МСП: фамилия и инициалы, тот же муниципалитет (вероятное)"
+    return None
+
 
 def read_sheet() -> pd.DataFrame:
     for sheet, df in pd.read_excel(XLSX, sheet_name=None).items():
@@ -70,6 +128,7 @@ def read_sheet() -> pd.DataFrame:
             return df
     raise RuntimeError("в xlsx нет листа с инвестпроектами")
 
+
 def read_invest_don(region: str) -> pd.DataFrame:
     path = OUT / f"invest_don_{region}.parquet"
     if not path.exists():
@@ -78,17 +137,22 @@ def read_invest_don(region: str) -> pd.DataFrame:
     df["sheet"] = None
     return df
 
+
+# Статус портала invest-don.ru → стадия (главнее вывода по годам)
 SITE_STAGE = {"Завершенные": "введён", "Приостановленные": "приостановлен", "Перспективные": "подготовка"}
 
-def match_local(initiators: list[str], by_key: dict, msp: pd.DataFrame) -> tuple | None:
 
+def match_local(initiators: list[str], by_key: dict, msp: pd.DataFrame) -> tuple | None:
+    """Точное совпадение очищенного имени с реестром МСП (ИП там записаны полным ФИО); тёзки — не верим."""
     for ini in initiators:
         inns = by_key.get(name_key(ini), [])
         if len(inns) == 1:
             return inns[0], msp.name[msp.inn == inns[0]].iloc[0], 1.0, "реестр МСП: точное совпадение имени"
     return None
 
+
 class Lookup:
+    """DaData с кэшем в data/seed/dadata; в режиме offline работает только кэш."""
 
     def __init__(self, region: str, offline: bool, budget: int = 3000):
         self.region, self.dd, self.failed = region, None if offline else DaData(load_key(), budget=budget), 0
@@ -102,11 +166,11 @@ class Lookup:
             return None
         try:
             return self.dd.cached(kind, key, method, payload)["response"]
-        except (urllib.error.URLError, TimeoutError) as e:
+        except (urllib.error.URLError, TimeoutError) as e:  # сеть упала — не кэшируем, дозапросим в следующий запуск
             self.failed += 1
             print(f"  DaData недоступна ({e}), пропускаю «{query[:40]}»", file=sys.stderr)
             return None
-        except RuntimeError as e:
+        except RuntimeError as e:  # бюджет запуска или дневной лимит — дальше только кэш
             print(f"  DaData: {e}; дальше работаю по кэшу", file=sys.stderr)
             self.failed += 1
             self.dd = None
@@ -116,7 +180,7 @@ class Lookup:
         if region_only:
             r = self._cached("party_name", query, "suggest/party",
                              {"query": query, "count": 5, "locations": [{"kladr_id": self.region}]})
-        else:
+        else:  # головная компания в другом регионе (федеральные игроки)
             r = self._cached("party_name", f"any|{query}", "suggest/party", {"query": query, "count": 5})
         return (r or {}).get("suggestions", [])
 
@@ -126,20 +190,43 @@ class Lookup:
         sug = (r or {}).get("suggestions", [])
         return sug[0]["data"] if sug else None
 
-def match_dadata(initiators: list[str], lk: Lookup) -> tuple | None:
 
+def match_dadata(initiators: list[str], lk: Lookup) -> tuple | None:
+    """Лучшая подсказка DaData по похожести очищенных названий; ниже MIN_MATCH — не верим.
+    Сначала ищем в регионе; если там ничего — по всей России (ИП-физлица по ФИО вне региона не ищем: тёзок много)."""
     best = _best_party(initiators, lk, True)
     if best is None:
         legal = [i for i in initiators if re.search(r"\b(?:ООО|АО|ПАО|ЗАО|ОАО|ГК|ФГУП|МУП|ГУП|Филиал|Концерн)\b|«|\"", i)]
         best = _best_party(legal, lk, False)
         if best:
             best = (*best[:3], "DaData suggest/party по названию (вне региона)")
+    if best is None:
+        best = _unique_person(initiators, lk)
     return best
+
+
+def _unique_person(initiators: list[str], lk: Lookup) -> tuple | None:
+    """Полное ФИО (фамилия, имя, отчество), которого нет среди ИП в реестре МСП: ищем ИП в ЕГРИП без фильтра адреса.
+    Верим только единственному действующему ИП с точно таким же ФИО и ИНН области — всё равно «вероятное»."""
+    for ini in initiators:
+        key = name_key(ini)
+        if not _FIO.match(key):
+            continue
+        # ИНН другого региона у ростовского проекта — скорее тёзка, чем инициатор: такие не берём
+        same = [s for s in lk.party(key, False)
+                if s["data"].get("type") == "INDIVIDUAL"
+                and s["data"].get("state", {}).get("status") in (None, "ACTIVE")
+                and name_key(s["value"]) == key]
+        same = [s for s in same if s["data"]["inn"].startswith(lk.region)] if len(same) == 1 else []
+        if len(same) == 1:
+            return same[0]["data"]["inn"], same[0]["value"], 0.9, "DaData: единственный ИП с таким ФИО, ИНН области (вероятное)"
+    return None
+
 
 def _best_party(initiators: list[str], lk: Lookup, region_only: bool) -> tuple | None:
     best = None
     for ini in initiators:
-
+        # «АО "Росхим (ранее АО "Русский водород"…)"» → «росхим»: пояснения в скобках только мешают поиску
         base = name_key(_PAREN.sub(" ", ini)) or name_key(ini)
         q = base if len(base) > 3 else ini
         for s in lk.party(q, region_only):
@@ -152,6 +239,7 @@ def _best_party(initiators: list[str], lk: Lookup, region_only: bool) -> tuple |
                 best = (d["inn"], s["value"], round(score, 2), "DaData suggest/party по названию")
     return best if best and best[2] >= MIN_MATCH else None
 
+
 def centroids(region: str) -> dict:
     path = GEO / {"61": "rostov_municipalities.geojson"}[region]
     out = {}
@@ -160,8 +248,9 @@ def centroids(region: str) -> dict:
         out[f["properties"]["oktmo"]] = (round(c.y, 5), round(c.x, 5))
     return out
 
-def stage(start, finish, today: date, site_status=None) -> tuple[str, int | None]:
 
+def stage(start, finish, today: date, site_status=None) -> tuple[str, int | None]:
+    """Стадия и месяцы до ввода (ввод считаем на конец года — точнее в реестре нет)."""
     months = None if finish is None else int((finish - today.year) * 12 + (12 - today.month))
     if site_status in SITE_STAGE:
         return SITE_STAGE[site_status], months
@@ -175,8 +264,9 @@ def stage(start, finish, today: date, site_status=None) -> tuple[str, int | None
         return "ввод в этом году", months
     return "реализация", months
 
-def window_factor(months, st: str) -> tuple[float, str]:
 
+def window_factor(months, st: str) -> tuple[float, str]:
+    """Окно продаж: решение о подрядчиках связи и автоматики принимается за 6–18 месяцев до ввода."""
     if st == "приостановлен":
         return 0.1, "проект приостановлен"
     if st == "подготовка" and (months is None or months > 18):
@@ -188,10 +278,11 @@ def window_factor(months, st: str) -> tuple[float, str]:
     if months < 6:
         return 0.4, "ввод меньше чем через 6 мес. — смета, скорее всего, закрыта"
     if months <= 18:
-        return 1.0, "6–18 мес. до ввода — лучшее окно продаж"
+        return 1.0, "ввод в следующем году — лучшее окно продаж"
     if months <= 36:
         return 0.6, "1,5–3 года до ввода — время знакомиться с инициатором"
     return 0.3, "больше 3 лет до ввода — держать на радаре"
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -216,11 +307,12 @@ def main():
     ref, cents = load_reference(a.region), centroids(a.region)
     df[["oktmo", "municipality"]] = [list(ref.get(norm(m), (None, None))) for m in df.mo_raw]
 
-    msp = pd.read_parquet(RADAR / f"companies_{a.region}.parquet", columns=["inn", "name", "is_rtk_client"])
+    msp = pd.read_parquet(RADAR / f"companies_{a.region}.parquet", columns=["inn", "name", "kind", "oktmo", "is_rtk_client"])
     msp["key"] = msp.name.map(name_key)
+    persons = person_index(msp)
     clients = set(pd.read_parquet(RADAR / f"clients_{a.region}.parquet", columns=["inn"]).inn)
     msp_inns = set(msp.inn)
-    msp_by_key = msp.groupby("key").inn.agg(list).to_dict()
+    msp_by_key = msp.groupby("key").inn.agg(list).to_dict()  # быстрый точный поиск вместо фильтра по 188 тыс. строк
     lk = Lookup(a.region, a.offline, a.budget)
 
     rows = []
@@ -229,7 +321,9 @@ def main():
             print(f"  {n_row}/{len(df)}", file=sys.stderr, flush=True)
         m = None
         if r["initiators"]:
-            m = match_local(r["initiators"], msp_by_key, msp) or match_dadata(r["initiators"], lk)
+            # Сначала бесплатные способы по реестру МСП, DaData — только если они не дали ответа
+            m = (match_local(r["initiators"], msp_by_key, msp) or match_initials(r["initiators"], r["oktmo"], persons)
+                 or match_dadata(r["initiators"], lk))
         inn, matched_name, score, method = m or (None, None, None, "не найден" if r["initiators"] else "инициатор не указан")
         if not inn:
             client_status = "ИНН не найден"
@@ -240,6 +334,7 @@ def main():
         else:
             client_status = "потенциальный (вне МСП)"
 
+        # Координаты: точка с портала → адрес из текста → DaData, иначе центроид муниципалитета
         lat = lon = None
         precision, address = "центр муниципалитета", None
         if don and num(r.get("site_lat")) is not None:
@@ -258,9 +353,9 @@ def main():
         st, months = stage(start, finish, today, r.get("status"))
         wf, w_reason = window_factor(months, st)
         cl = classify(r["initiator_raw"], r["title_raw"])
-        share = IT_SHARE[cl["industry"]]
+        share = RTK_SHARE
         potential = round(total * share, 2) if total is not None else None
-
+        # Балл 0–100: окно продаж 50, размер потенциала 30 (лог. шкала, 100 млн ₽ = максимум), ключевой 10, не наш 10
         f_window = round(50 * wf, 1)
         f_size = round(30 * min(1.0, math.log10(1 + potential) / 2), 1) if potential else 0.0
         f_key = 10.0 if r["is_key"] else 0.0
@@ -290,7 +385,7 @@ def main():
         })
 
     out = pd.DataFrame(rows).sort_values("hot_score", ascending=False)
-
+    # Один инициатор с несколькими проектами — это один контакт для продажника
     key = out.initiator_inn.fillna(out.initiator.map(name_key))
     out["initiator_projects"] = key.map(key.value_counts())
 
@@ -315,11 +410,12 @@ def main():
         "by_industry": out.industry.value_counts().to_dict(),
         "by_need": {NEED_LABELS[k]: int(out.needs.map(lambda n: k in n).sum()) for k in NEED_LABELS},
         "without_needs": int(out.needs.map(len).eq(0).sum()),
-        "it_share_norms": IT_SHARE, "it_share_note": "экспертный норматив для демо, не данные",
+        "it_share": RTK_SHARE, "it_share_note": "единые 3% суммы проекта — допущение команды для демо, не данные",
         "built_at": datetime.now().isoformat(timespec="seconds"),
     }
     (OUT / f"{stem}.meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(meta, ensure_ascii=False, indent=2))
+
 
 if __name__ == "__main__":
     main()

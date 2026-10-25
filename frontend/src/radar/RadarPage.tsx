@@ -23,10 +23,11 @@ export default function RadarPage() {
   const baseZones = useQuery({ queryKey: ['zones'], queryFn: api.zones });
   const industries = useQuery({ queryKey: ['industries'], queryFn: api.industries });
   const points = useQuery({ queryKey: ['points', debounced], queryFn: () => api.points(debounced) });
-
+  // Метрики районов под текущие фильтры (отрасль, вид, доход); при смене показываем прошлые, пока грузятся новые
   const stats = useQuery({ queryKey: ['zone-metrics', debounced], queryFn: () => api.zoneMetrics(debounced),
     placeholderData: keepPreviousData });
 
+  // Потенциал, охват, белые пятна — пересчёт в браузере при любом движении весов или смене фильтров
   const zones = useMemo(
     () => (baseZones.data && stats.data ? computeZones(baseZones.data, stats.data, weights) : undefined),
     [baseZones.data, stats.data, weights]);
@@ -37,13 +38,6 @@ export default function RadarPage() {
   const onSelectZone = useCallback((z: { oktmo: string } | null) => setZoneId(z?.oktmo ?? null), []);
   const filtered = debounced.industry.length > 0 || debounced.kind.length > 0 || !!debounced.incomeMin
     || !!debounced.incomeMax || !!debounced.growthMin;
-
-  const pointsNote = useMemo(() => {
-    const n = points.data?.length ?? 0;
-    const rtk = points.data?.filter(p => p.is_rtk_client).length ?? 0;
-    return `Точки — юрлица с найденным адресом (ЕГРЮЛ → координаты дома): ${n.toLocaleString('ru-RU')}, из них клиентов РТК ${rtk.toLocaleString('ru-RU')}. `
-      + 'Остальные компании без точки: адрес ИП не публикуется, юрлица геокодируются постепенно (лимит DaData). Они учтены в цвете района и в списках.';
-  }, [points.data]);
 
   return (
     <div className="radar">
@@ -61,10 +55,9 @@ export default function RadarPage() {
         <RadarMap zones={zones} points={points.data} metric={metric} selected={zoneId}
           onSelectZone={onSelectZone} onSelectCompany={onCompany} />
         <div className="map-legend">
-          <span>{METRICS[metric].label}: меньше</span><i className="legend-bar" /><span>больше</span>
+          <span className="legend-group">{METRICS[metric].label}: меньше <i className="legend-bar" /> больше</span>
           <span className="legend-spot">белое пятно</span>
-          <span><i className="dot dot--rtk" /> клиент РТК <i className="dot dot--other" /> потенциальный</span>
-          <span className="legend-note">{pointsNote}</span>
+          <span className="legend-group"><i className="dot dot--rtk" /> клиент РТК <i className="dot dot--other" /> потенциальный</span>
         </div>
       </section>
 

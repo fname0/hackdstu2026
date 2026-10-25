@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Первичная настройка VPS (Ubuntu) под вариант 1: Docker + база + API + сайт.
+# Запуск на сервере от root:  bash /opt/rt/deploy/vps_setup.sh
+# Идемпотентен: повторный запуск ничего не ломает.
 set -euo pipefail
 
 APP_DIR=/opt/rt
@@ -19,6 +22,7 @@ ufw allow 80/tcp >/dev/null
 ufw allow 443/tcp >/dev/null
 ufw allow "$DB_PORT"/tcp >/dev/null
 ufw --force enable >/dev/null
+# Docker публикует порты в обход ufw; наружу открыты только 80 и $DB_PORT из compose — это и задумано.
 
 echo "== 3. Защита SSH: fail2ban; вход по паролю выключается только по запросу (DISABLE_SSH_PASSWORD=1) и если есть ключ"
 systemctl enable --now fail2ban >/dev/null
